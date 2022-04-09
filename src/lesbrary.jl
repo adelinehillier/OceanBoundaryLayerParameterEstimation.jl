@@ -2,7 +2,7 @@ using DataDeps
 using Statistics
 using Oceananigans
 using Oceananigans.Units
-using OceanLearning.Transformations: Transformation
+using ParameterEstimocean.Transformations: Transformation
 
 fields_by_case = Dict(
    "free_convection" => (:b, :e),
@@ -61,11 +61,19 @@ function lesbrary_ensemble_simulation(observations;
     N² = simulation.model.tracers.b.boundary_conditions.bottom.condition
 
     for (case, obs) in enumerate(observations)
-        f = obs.metadata.parameters.coriolis_parameter
-        view(Qᵘ, :, case) .= obs.metadata.parameters.momentum_flux
-        view(Qᵇ, :, case) .= obs.metadata.parameters.buoyancy_flux
-        view(N², :, case) .= obs.metadata.parameters.N²_deep
-        view(simulation.model.coriolis, :, case) .= Ref(FPlane(f=f))
+      try 
+         f = obs.metadata.parameters.coriolis_parameter
+         view(Qᵘ, :, case) .= obs.metadata.parameters.momentum_flux
+         view(Qᵇ, :, case) .= obs.metadata.parameters.buoyancy_flux
+         view(N², :, case) .= obs.metadata.parameters.N²_deep   
+         view(simulation.model.coriolis, :, case) .= Ref(FPlane(f=f))
+      catch
+         f = obs.metadata.coriolis.f
+         view(Qᵘ, :, case) .= obs.metadata.parameters.Qᵘ
+         view(Qᵇ, :, case) .= obs.metadata.parameters.Qᵇ
+         view(N², :, case) .= obs.metadata.parameters.N²
+         view(simulation.model.coriolis, :, case) .= Ref(FPlane(f=f))
+      end
     end
 
     return simulation

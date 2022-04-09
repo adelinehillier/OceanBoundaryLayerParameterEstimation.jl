@@ -82,15 +82,14 @@ function plot_pairwise_ensembles!(eki, directory, true_parameters=nothing)
     end
 end
 
-function plot_error_convergence!(eki, directory, true_parameters=nothing)
+function plot_error_convergence!(f, eki, directory, true_parameters=nothing)
 
     means = ensemble_means(eki)
     N_iter = length(eki.iteration_summaries) - 1 # exclude 0th element
-    y = observation_map(eki.inverse_problem)
+    y = eki.mapped_observations
 
-    f = Figure()
     output_distances = [mapslices(norm, (forward_map(eki.inverse_problem, [means...])[:, 1:(N_iter+1)] .- y), dims = 1)...]
-    lines(f[1, 1], 0:N_iter, output_distances, color = :blue, linewidth = 2,
+    scatterlines(f[1, 1], 0:N_iter, output_distances, color = :blue, linewidth = 2,
         axis = (title = "Output distance",
             xlabel = "Iteration",
             ylabel = "|G(θ̅ₙ) - y|",
@@ -98,12 +97,21 @@ function plot_error_convergence!(eki, directory, true_parameters=nothing)
     
     isnothing(true_parameters) || begin
         weight_distances = [norm(collect(means[iter]) .- collect(true_parameters)) for iter = 0:N_iter]
-        lines(f[1, 2], 0:N_iter, weight_distances, color = :red, linewidth = 2,
+        scatterlines(f[1, 2], 0:N_iter, weight_distances, color = :red, linewidth = 2,
             axis = (title = "Parameter distance",
                 xlabel = "Iteration",
                 ylabel = "|θ̅ₙ - θ⋆|",
                 yscale = log10))
     end
+
+    nothing
+end
+
+function plot_error_convergence!(eki, directory, true_parameters=nothing)
+
+    f = Figure()
+
+    plot_error_convergence!(f, eki, directory, true_parameters)
 
     save(joinpath(directory, "error_convergence_summary.png"), f);
 end

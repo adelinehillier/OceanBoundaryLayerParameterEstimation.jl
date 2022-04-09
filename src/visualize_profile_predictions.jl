@@ -1,4 +1,4 @@
-using OceanLearning.InverseProblems: vectorize, forward_run!, transpose_model_output
+using ParameterEstimocean.InverseProblems: vectorize, forward_run!, transpose_model_output
 using CairoMakie
 
 include("visualize_profile_predictions_utils.jl")
@@ -73,7 +73,7 @@ function visualize!(ip::InverseProblem, parameters;
 
             z = field_name ∈ [:u, :v] ? grid.zᵃᵃᶠ[1:grid.Nz] : grid.zᵃᵃᶜ[1:grid.Nz]
 
-            to_plot = field_name ∈ keys(observation.field_time_serieses)
+            to_plot = field_name ∈ keys(prediction.field_time_serieses)
 
             if to_plot
 
