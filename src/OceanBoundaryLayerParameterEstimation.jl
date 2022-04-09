@@ -2,7 +2,7 @@ module OceanBoundaryLayerParameterEstimation
 
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "..", ".."))
 
-using OceanLearning
+using ParameterEstimocean
 
 export
     # lesbrary.jl
@@ -11,14 +11,16 @@ export
     estimate_η_covariance,
     SyntheticObservationsBatch,
 
-    # catke_parameters.jl
+    # closure_parameters.jl
     bounds,
+    default,
     ParameterSet,
     named_tuple_map,
     CATKEParametersRiDependent,
     CATKEParametersRiIndependent,
     CATKEParametersRiDependentConvectiveAdjustment,
     CATKEParametersRiIndependentConvectiveAdjustment,
+    RiBasedParameterSet,
 
     # eki_visuals.jl
     plot_parameter_convergence!,
@@ -29,7 +31,7 @@ export
     visualize!
 
 include("lesbrary.jl")
-include("catke_parameters.jl")
+include("closure_parameters.jl")
 include("eki_visuals.jl")
 include("visualize_profile_predictions.jl")
 
