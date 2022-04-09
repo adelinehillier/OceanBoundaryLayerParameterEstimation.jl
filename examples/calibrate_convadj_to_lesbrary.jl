@@ -1,8 +1,8 @@
 # Calibrate convective adjustment closure parameters to LESbrary 2-day "free_convection" simulation
 
 using OceanBoundaryLayerParameterEstimation
-using OceanLearning
-using OceanLearning.Transformations: Transformation
+using ParameterEstimocean
+using ParameterEstimocean.Transformations: Transformation
 using LinearAlgebra, CairoMakie, DataDeps
 using Oceananigans
 using Oceananigans.Units
@@ -161,7 +161,7 @@ visualize!(calibration, θglobalmin;
     filename = "realizations_θglobalmin.pdf"
 )
 
-using OceanLearning.EnsembleKalmanInversions: eki_objective
+using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 Φs = [eki_objective(eki, params[:,j], G[:,j]; constrained = true) for j in 1:size(G, 2)]
 
 save(file, Dict("G" => G,

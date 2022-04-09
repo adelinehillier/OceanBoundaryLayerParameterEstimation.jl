@@ -1,12 +1,12 @@
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
 
 using OceanBoundaryLayerParameterEstimation
-using OceanLearning
-using OceanLearning.EnsembleKalmanInversions: NaNResampler, FullEnsembleDistribution
+using ParameterEstimocean
+using ParameterEstimocean.EnsembleKalmanInversions: NaNResampler, FullEnsembleDistribution
 using Oceananigans.TurbulenceClosures.CATKEVerticalDiffusivities: CATKEVerticalDiffusivity
 using LinearAlgebra, CairoMakie
 
-examples_path = joinpath(pathof(OceanLearning), "../../examples")
+examples_path = joinpath(pathof(ParameterEstimocean), "../../examples")
 include(joinpath(examples_path, "intro_to_inverse_problems.jl"))
 
 ###
@@ -51,7 +51,7 @@ ensemble_simulation, closure = build_ensemble_simulation(observations; Nensemble
 ### Build Inverse Problem
 ###
 
-build_prior(name) = ScaledLogitNormal(bounds=bounds(name))
+build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
 free_parameters = FreeParameters(named_tuple_map(names(parameter_set), build_prior))
 
 # Pack everything into Inverse Problem `calibration`

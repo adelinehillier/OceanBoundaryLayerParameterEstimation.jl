@@ -4,13 +4,13 @@ using OceanBoundaryLayerParameterEstimation
 using ParameterEstimocean
 using ParameterEstimocean.Parameters: closure_with_parameters
 using ParameterEstimocean.Observations: set!
-using ParameterEstimocean.PseudoSteppingSchemes
 
 using Oceananigans
 using Oceananigans.Units
 using Oceananigans.OutputWriters: TimeInterval, JLD2OutputWriter
 using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
 using Oceananigans: run!
+using ParameterEstimocean.PseudoSteppingSchemes
 
 regenerate_synthetic_observations = true
 architecture = CPU()
@@ -37,20 +37,20 @@ architecture = CPU()
 
 # true_closure = closure_with_parameters(closure, true_parameters)
 
-# data_dir = "lesbrary_catke_perfect_model_6_days"
+# data_dir = "lesbrary_catke_perfect_model_2_days"
 # isdir(data_dir) || mkpath(data_dir)
 
 Δt = 10minutes
 
 parameter_set = RiBasedParameterSet
 
-# closure = closure_with_parameters(RiBasedVerticalDiffusivity(), parameter_set.settings)
-closure = RiBasedVerticalDiffusivity()
+closure = closure_with_parameters(RiBasedVerticalDiffusivity(), parameter_set.settings)
+# closure = RiBasedVerticalDiffusivity()
 
 true_parameters = parameter_set.settings
 true_closure = closure
 
-data_dir = "lesbrary_ri_based_perfect_model_6_days"
+data_dir = "lesbrary_ri_based_perfect_model_2_days"
 isdir(data_dir) || mkpath(data_dir)
 
 ###
@@ -58,7 +58,6 @@ isdir(data_dir) || mkpath(data_dir)
 ###
 
 function run_synthetic_single_column_simulation!(observation, prefix; 
-                                                Nensemble = 30,
                                                 architecture = CPU(),
                                                 closure = ConvectiveAdjustmentVerticalDiffusivity(),
                                                 Δt = 10.0,
@@ -92,10 +91,10 @@ function run_synthetic_single_column_simulation!(observation, prefix;
     model = simulation.model
 
     simulation.output_writers[:fields] = JLD2OutputWriter(model, merge(model.velocities, model.tracers),
-                                                          schedule = TimeInterval(0.5days),
+                                                          schedule = TimeInterval(0.25days),
                                                           array_type = Array{Float64},
                                                           prefix = prefix,
-                                                          field_slicer = nothing,
+                                                          with_halos = true,
                                                           init = init_with_parameters,
                                                           force = true)
 
@@ -121,11 +120,11 @@ regenerate_synthetic_observations && begin
 
     field_names = (:b, :u, :v, :e)
 
-    six_day_suite_path(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+    two_day_suite_path(case) = "two_day_suite_2m/$(case)_instantaneous_statistics.jld2"
 
     for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
 
-        lesbrary_data_path = @datadep_str six_day_suite_path(case)
+        lesbrary_data_path = @datadep_str two_day_suite_path(case)
 
         lesbrary_observation = SyntheticObservations(lesbrary_data_path; transformation, 
                                                 times=nothing, 
@@ -134,7 +133,6 @@ regenerate_synthetic_observations && begin
 
         prefix = joinpath(data_dir, case)
         run_synthetic_single_column_simulation!(lesbrary_observation, prefix; 
-                                                Nensemble=1, 
                                                 architecture, 
                                                 closure=true_closure, 
                                                 Δt)
@@ -145,12 +143,12 @@ end
 ### Build coarse-grained SyntheticObservations from data.
 ###
 
-Nz = 128
-Nensemble = 20
+Nz = 64
+Nensemble = 30
 
-training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
-validation_times = [3.0days, 3.5days, 4.0days]
-testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
+training_times = [0.5days, 0.75days, 1.0days]
+validation_times = [1.0days, 1.25days, 1.5days]
+testing_times = [1.5days, 1.75days, 2.0days]
 
 path_fn(case) = joinpath(data_dir, case) * ".jld2"
 # training_observations = SyntheticObservationsBatch(path_fn, transformation, training_times, Nz; datadep=false)
@@ -168,13 +166,12 @@ free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prio
 
 function inverse_problem(Nensemble, times)
     observations = SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep=false)
-    simulation = lesbrary_ensemble_simulation(observations; Nensemble, architecture, closure, Δt)
 
-    # simulation = ensemble_column_model_simulation(observations;
-    #                                               Nensemble,
-    #                                               architecture,
-    #                                               tracers = (:b, :e),
-    #                                               closure)
+    simulation = ensemble_column_model_simulation(observations;
+                                                  Nensemble,
+                                                  architecture,
+                                                  tracers = (:b, :e),
+                                                  closure)
 
     simulation.Δt = Δt
 
@@ -191,13 +188,27 @@ validation = inverse_problem(Nensemble, validation_times)
 testing = inverse_problem(Nensemble, testing_times)
 
 resampler = Resampler(resample_failure_fraction=0.5, acceptable_failure_fraction=1.0)
-eki = EnsembleKalmanInversion(training; resampler, convergence_rate=0.8)
+eki = EnsembleKalmanInversion(training; resampler)
 
-stepping_scheme = ConstantConvergence(convergence_ratio = 0.7)
-iterate!(eki; iterations = 1, pseudo_stepping = stepping_scheme)
+stepping_scheme = ConstantConvergence(convergence_ratio = 0.9)
+params = iterate!(eki; iterations = 10, pseudo_stepping = stepping_scheme)
+
+###
+### Visualize
+###
 
 visualize!(training, true_parameters;
                     field_names = [:u, :v, :b, :e],
                     directory = data_dir,
                     filename = "true_parameter_training_realizations.png"
                     )
+
+visualize!(training, params;
+                    field_names = [:u, :v, :b, :e],
+                    directory = data_dir,
+                    filename = "perfect_model_visual_calibrated.png"
+                    )
+
+plot_parameter_convergence!(eki, data_dir; true_parameters, n_columns=3)
+plot_pairwise_ensembles!(eki, data_dir, true_parameters)
+plot_error_convergence!(eki, data_dir, true_parameters)
