@@ -35,6 +35,24 @@ ces_directory = joinpath(directory, "QuickCES/")
 isdir(ces_directory) || mkdir(ces_directory)
 
 predict = trained_gp_predict_function(X, Φ)
+using OceanLearning.Transformations: ZScore, normalize!
+using Statistics
+
+normalize!(Φ, ZScore(mean(Φ), var(Φ)))
+
+ces_directory = joinpath(directory, "QuickCES/")
+isdir(ces_directory) || mkdir(ces_directory)
+
+# MZero
+#  * Candidate solution
+#     Final objective value:     -7.398974e+03
+
+mZero = MeanZero()
+# kern = Matern(5 / 2, [0.0 for _ in 1:ni*nj], 0.0) + SE(0.0, 0.0)
+kern = Matern(5 / 2, [0.0, 0.0], 0.0)
+gp = GP(x, Φ, mZero, kern, -2.0)
+
+optimize!(gp)
 
 xs = x[1, :]
 ys = x[2, :]

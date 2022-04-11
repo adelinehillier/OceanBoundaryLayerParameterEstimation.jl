@@ -22,17 +22,25 @@ export
     CATKEParametersRiIndependentConvectiveAdjustment,
     RiBasedParameterSet,
 
+    # mcmc.jl
+    markov_chain,
+
     # eki_visuals.jl
     plot_parameter_convergence!,
     plot_pairwise_ensembles!,
     plot_error_convergence!,
+
+    # uq_visuals.jl
+    plot_mcmc_densities,
 
     # visualize_profile_predictions.jl
     visualize!
 
 include("lesbrary.jl")
 include("closure_parameters.jl")
+include("mcmc.jl")
 include("eki_visuals.jl")
 include("visualize_profile_predictions.jl")
+include("uq_visuals.jl")
 
 end # module
