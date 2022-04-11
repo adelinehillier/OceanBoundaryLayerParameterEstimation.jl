@@ -60,7 +60,7 @@ function proposal_X_nll(current_X, current_nll)
     return proposal_X, proposal_nll
 end
 
-function proposal_X_nll(current_X, current_nll::Vector) = 
+function proposal_X_nll(current_X, current_nll::Vector)
     proposal_X = proposal.(current_X)
     proposal_nll = nll(proposal_X)
 
