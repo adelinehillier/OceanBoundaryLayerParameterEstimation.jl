@@ -12,7 +12,7 @@ fields_by_case = Dict(
    "strong_wind_no_rotation" => (:b, :u, :e)
 )
 
-function SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep = true)
+function SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep = true, architecture = CPU())
 
    observations = Vector{SyntheticObservations}()
    field_names = (:b, :u, :v, :e)
@@ -20,7 +20,7 @@ function SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep 
    for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
 
       data_path = datadep ? (@datadep_str path_fn(case)) : path_fn(case)
-      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, regrid=(1, 1, Nz))
+      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, architecture, regrid=(1, 1, Nz))
 
       push!(observations, observation)
    end
@@ -37,9 +37,14 @@ transformation = (b = Transformation(normalization=ZScore()),
                   v = Transformation(normalization=ZScore()),
                   e = Transformation(normalization=RescaledZScore(1e-1)))
 
-TwoDaySuite(; transformation=transformation, times=[2hours, 12hours, 1days, 36hours, 2days], Nz=64) = SyntheticObservationsBatch(two_day_suite_path, transformation, times, Nz)
-FourDaySuite(; transformation=transformation, times=[2hours, 1days, 2days, 3days, 4days], Nz=64) = SyntheticObservationsBatch(four_day_suite_path, transformation, times, Nz)
-SixDaySuite(; transformation=transformation, times=[2hours, 1.5days, 3days, 4.5days, 6days], Nz=64) = SyntheticObservationsBatch(six_day_suite_path, transformation, times, Nz)
+TwoDaySuite(; transformation=transformation, times=[2hours, 12hours, 1days, 36hours, 2days], 
+            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(two_day_suite_path, transformation, times, Nz; architecture)
+
+FourDaySuite(; transformation=transformation, times=[2hours, 1days, 2days, 3days, 4days], 
+            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(four_day_suite_path, transformation, times, Nz; architecture)
+
+SixDaySuite(; transformation=transformation, times=[2hours, 1.5days, 3days, 4.5days, 6days], 
+            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(six_day_suite_path, transformation, times, Nz; architecture)
 
 function lesbrary_ensemble_simulation(observations; 
                                              Nensemble = 30,
