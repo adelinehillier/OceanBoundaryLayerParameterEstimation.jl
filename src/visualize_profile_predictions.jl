@@ -1,4 +1,5 @@
 using ParameterEstimocean.InverseProblems: vectorize, forward_run!, transpose_model_output
+using Oceananigans.Architectures: arch_array
 using CairoMakie
 
 include("visualize_profile_predictions_utils.jl")
@@ -48,9 +49,9 @@ function visualize!(ip::InverseProblem, parameters;
         targets = observation.times
         snapshots = round.(Int, range(1, length(targets), length=3))
 
-        Qᵇ = model.tracers.b.boundary_conditions.top.condition[1,oi]
-        Qᵘ = model.velocities.u.boundary_conditions.top.condition[1,oi]
-        fv = model.coriolis[1,oi].f 
+        Qᵇ = arch_array(CPU(), model.tracers.b.boundary_conditions.top.condition)[1,oi]
+        Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
+        fv = arch_array(CPU(), model.coriolis)[1,oi].f
 
         empty_plot!(fig[i,1])
         text!(fig[i,1], "Qᵇ = $(tostring(Qᵇ)) m⁻¹s⁻³\nQᵘ = $(tostring(Qᵘ)) m⁻¹s⁻²\nf = $(tostring(fv)) s⁻¹", 
@@ -80,6 +81,7 @@ function visualize!(ip::InverseProblem, parameters;
                 # field data for each time step
                 obsn = getproperty(observation.field_time_serieses, field_name)
                 pred = getproperty(prediction.field_time_serieses, field_name)
+                pred = arch_array(CPU(), pred.data)
 
                 ax = Axis(fig[i,j]; xlabelpadding=0, xtickalign=1, ytickalign=1, 
                                             merge(axis_position, info.axis_args)...)
