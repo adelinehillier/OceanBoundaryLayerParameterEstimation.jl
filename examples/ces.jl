@@ -2,6 +2,8 @@ using GaussianProcesses
 using FileIO
 using LinearAlgebra
 
+include("gp.jl")
+
 # description = ""
 # noise_cov_name = "noise_covariance_0001"
 # file = "calibrate_convadj_to_lesbrary/loss_landscape_$(description).jld2"
@@ -29,31 +31,14 @@ not_nan_indices = findall(.!isnan.(Φ))
 Φ = Φ[not_nan_indices]
 x = x[:, not_nan_indices]
 
-OceanLearning.Transformations.normalize!(Φ, ZScore(mean(Φ), var(Φ)))
-
-
-using OceanLearning.Transformations: ZScore, normalize!
-using Statistics
-
-
 ces_directory = joinpath(directory, "QuickCES/")
 isdir(ces_directory) || mkdir(ces_directory)
 
-
-# MZero
-#  * Candidate solution
-#     Final objective value:     -7.398974e+03
-
-mZero = MeanZero()
-# kern = Matern(5 / 2, [0.0 for _ in 1:ni*nj], 0.0) + SE(0.0, 0.0)
-kern = Matern(5 / 2, [0.0, 0.0], 0.0)
-gp = GP(x, Φ, mZero, kern, -2.0)
-
-optimize!(gp)
+predict = trained_gp_predict_function(X, Φ)
 
 xs = x[1, :]
 ys = x[2, :]
-Φ_predicted = predict_f(gp, x)[1]
+Φ_predicted = predict(x)
 
 using Plots
 p = Plots.plot(gp)
@@ -61,3 +46,14 @@ Plots.savefig(p, joinpath(directory, "hello.pdf"))
 
 plot_contour(eki, xs, ys, Φ_predicted, "GP_emulated", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="GP-Emulated EKI Objective, Φ")
 plot_contour(eki, xs, ys, Φ, "Original", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="EKI Objective, Φ")
+
+
+###
+### Run MCMC on the emulated forward map
+###
+
+
+###
+### Run MCMC on the true forward map
+###
+
