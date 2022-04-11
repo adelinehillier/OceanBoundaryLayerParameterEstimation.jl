@@ -29,16 +29,13 @@ not_nan_indices = findall(.!isnan.(Φ))
 Φ = Φ[not_nan_indices]
 x = x[:, not_nan_indices]
 
-OceanLearning.Transformations.normalize!(Φ, ZScore(mean(Φ), var(Φ)))
-
-
 using OceanLearning.Transformations: ZScore, normalize!
 using Statistics
 
+normalize!(Φ, ZScore(mean(Φ), var(Φ)))
 
 ces_directory = joinpath(directory, "QuickCES/")
 isdir(ces_directory) || mkdir(ces_directory)
-
 
 # MZero
 #  * Candidate solution
