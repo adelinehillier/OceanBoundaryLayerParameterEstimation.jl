@@ -32,7 +32,7 @@ markov_link(nll, proposal, current_X, current_nll)
 - `proposal_X`: The X from the "proposal step". Was either rejected or accepted.
 - `proposal_nll`: value of nll(proposal_X)
 """
-function markov_link(proposal_X, proposal_nll, current_X, current_nll)
+function markov_link(; proposal_X, proposal_nll, current_X, current_nll)
     Δ = (current_nll - proposal_nll)
 
     if accept(Δ)
@@ -41,26 +41,26 @@ function markov_link(proposal_X, proposal_nll, current_X, current_nll)
         new_X, new_nll = current_X, current_nll
     end
 
-    return (; new_X, new_nll, proposal_X, proposal_nll)
+    return new_X, new_nll
 end
 
 function markov_link(; proposal_X, proposal_nll::Vector, current_X, current_nll::Vector)
 
     # Vector of NamedTuples
     result = markov_link.(proposal_X, proposal_nll, current_X, current_nll)
-    result = NamedTuple(key => getproperty.(result, key) for key in keys(result))
+    # result = NamedTuple(key => getproperty.(result, key) for key in keys(result))
     
-    return result
+    return getindex.(result, 1), getindex.(result, 2)
 end
 
-function proposal_X_nll(current_X, current_nll)
+function proposal_X_nll(nll, proposal, current_X, current_nll)
     proposal_X = proposal(current_X)
     proposal_nll = nll(proposal_X)
 
     return proposal_X, proposal_nll
 end
 
-function proposal_X_nll(current_X, current_nll::Vector) = 
+function proposal_X_nll(nll, proposal, current_X, current_nll::Vector)
     proposal_X = proposal.(current_X)
     proposal_nll = nll(proposal_X)
 
@@ -98,8 +98,8 @@ function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_cha
 
     for i = 1:chain_length-1
         for chain in n_chains
-            proposal_X, proposal_nll = proposal_X_nll(current_X, current_nll)
-            (; new_X, new_nll) = markov_link(proposal_X, proposal_nll, current_X, current_nll)
+            proposal_X, proposal_nll = proposal_X_nll(nll, proposal, current_X, current_nll)
+            new_X, new_nll = markov_link(; proposal_X, proposal_nll, current_X, current_nll)
             current_X, current_nll = new_X, new_nll # mcmc update
             push!(chain_X, new_X)
             push!(chain_nll, new_nll)
