@@ -153,8 +153,6 @@ validation_times = [3.0days, 3.5days, 4.0days]
 testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
 path_fn(case) = joinpath(data_dir, case) * ".jld2"
-# training_observations = SyntheticObservationsBatch(path_fn, transformation, training_times, Nz; datadep=false)
-# training_simulation = lesbrary_ensemble_simulation(training_observations; Nensemble, architecture, closure, Δt)
 
 begin
     file = jldopen(path_fn("free_convection"))
@@ -167,7 +165,7 @@ build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
 free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
 
 function inverse_problem(Nensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep=false)
+    observations = SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep=false, architecture)
     simulation = lesbrary_ensemble_simulation(observations; Nensemble, architecture, closure, Δt)
 
     # simulation = ensemble_column_model_simulation(observations;
