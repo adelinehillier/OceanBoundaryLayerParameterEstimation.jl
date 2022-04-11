@@ -53,7 +53,7 @@ function markov_link(; proposal_X, proposal_nll::Vector, current_X, current_nll:
     return getindex.(result, 1), getindex.(result, 2)
 end
 
-function proposal_X_nll(nll, proposal, current_X, current_nll)
+function proposal_X_nll(nll, proposal, current_X, current_nll::AbstractFloat)
     proposal_X = proposal(current_X)
     proposal_nll = nll(proposal_X)
 

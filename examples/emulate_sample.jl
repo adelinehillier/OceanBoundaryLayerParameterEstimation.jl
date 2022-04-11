@@ -16,7 +16,7 @@ burn_in = 50
 ### Sample from emulated loss landscape using parallel chains of MCMC
 ###
 
-using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function
+using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
 using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
 
 # First, conglomerate all samples generated thus far by EKI
@@ -30,7 +30,7 @@ y = y[not_nan_indices]
 
 # We will approximately non-dimensionalize all inputs according to mean and variance 
 # computed across all generated samples
-zscore_X = Zscore(mean(X, dims=2), var(X, dims=2))
+zscore_X = ZScore(mean(X, dims=2), var(X, dims=2))
 normalize!(X, zscore_X)
 
 # Ensemble covariance across all generated samples

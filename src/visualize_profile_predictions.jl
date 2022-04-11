@@ -81,7 +81,8 @@ function visualize!(ip::InverseProblem, parameters;
                 # field data for each time step
                 obsn = getproperty(observation.field_time_serieses, field_name)
                 pred = getproperty(prediction.field_time_serieses, field_name)
-                pred = arch_array(CPU(), pred.data)
+                pred = arch_array(CPU(), parent(parent(pred.data)))
+                obsn = arch_array(CPU(), parent(parent(obsn.data)))
 
                 ax = Axis(fig[i,j]; xlabelpadding=0, xtickalign=1, ytickalign=1, 
                                             merge(axis_position, info.axis_args)...)
