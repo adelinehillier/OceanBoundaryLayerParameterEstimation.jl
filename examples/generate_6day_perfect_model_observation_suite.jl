@@ -37,8 +37,8 @@ architecture = CPU()
 
 # true_closure = closure_with_parameters(closure, true_parameters)
 
-# data_dir = "lesbrary_catke_perfect_model_6_days"
-# isdir(data_dir) || mkpath(data_dir)
+# directory = "lesbrary_catke_perfect_model_6_days"
+# isdir(directory) || mkpath(directory)
 
 Δt = 10minutes
 
@@ -50,8 +50,8 @@ closure = RiBasedVerticalDiffusivity()
 true_parameters = parameter_set.settings
 true_closure = closure
 
-data_dir = "lesbrary_ri_based_perfect_model_6_days"
-isdir(data_dir) || mkpath(data_dir)
+directory = "lesbrary_ri_based_perfect_model_6_days"
+isdir(directory) || mkpath(directory)
 
 ###
 ### Generate data at high resolution using 6-day LESbrary as a template for ICs and BCs but CATKE "perfect model" parameters.
@@ -132,7 +132,7 @@ regenerate_synthetic_observations && begin
                                                 field_names=(:b, :u, :v, :e), 
                                                 forward_map_names)
 
-        prefix = joinpath(data_dir, case)
+        prefix = joinpath(directory, case)
         run_synthetic_single_column_simulation!(lesbrary_observation, prefix; 
                                                 Nensemble=1, 
                                                 architecture, 
@@ -152,7 +152,7 @@ training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
 validation_times = [3.0days, 3.5days, 4.0days]
 testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
-path_fn(case) = joinpath(data_dir, case) * ".jld2"
+path_fn(case) = joinpath(directory, case) * ".jld2"
 
 begin
     file = jldopen(path_fn("free_convection"))
@@ -196,6 +196,6 @@ iterate!(eki; iterations = 1, pseudo_stepping = stepping_scheme)
 
 visualize!(training, true_parameters;
                     field_names = [:u, :v, :b, :e],
-                    directory = data_dir,
+                    directory,
                     filename = "true_parameter_training_realizations.png"
                     )
