@@ -81,13 +81,13 @@ isdir(directory) || mkpath(directory)
 
 visualize!(calibration, true_parameters;
     field_names = (:u, :v, :b, :e),
-    directory = directory,
+    directory,
     filename = "perfect_model_visual_true_params.png"
 )
 
 visualize!(calibration, params;
     field_names = [:u, :v, :b, :e],
-    directory = directory,
+    directory,
     filename = "perfect_model_visual_calibrated.png"
 )
 @show params
