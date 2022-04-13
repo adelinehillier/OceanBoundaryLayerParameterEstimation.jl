@@ -19,7 +19,7 @@ Random.seed!(1234)
 
 Nz = 64
 Nensemble = 50
-architecture = GPU()
+architecture = CPU()
 
 two_day_suite = TwoDaySuite(; Nz, architecture)
 
