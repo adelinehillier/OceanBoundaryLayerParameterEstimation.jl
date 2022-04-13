@@ -2,8 +2,6 @@ using GaussianProcesses
 using FileIO
 using LinearAlgebra
 
-include("gp.jl")
-
 # description = ""
 # noise_cov_name = "noise_covariance_0001"
 # file = "calibrate_convadj_to_lesbrary/loss_landscape_$(description).jld2"
@@ -65,11 +63,9 @@ Plots.savefig(p, joinpath(directory, "hello.pdf"))
 plot_contour(eki, xs, ys, Φ_predicted, "GP_emulated", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="GP-Emulated EKI Objective, Φ")
 plot_contour(eki, xs, ys, Φ, "Original", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="EKI Objective, Φ")
 
-
 ###
 ### Run MCMC on the emulated forward map
 ###
-
 
 ###
 ### Run MCMC on the true forward map
