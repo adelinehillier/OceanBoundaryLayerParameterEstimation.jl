@@ -9,8 +9,8 @@
 n_chains = 100
 
 # Length and burn-in length per chain
-chain_length = 100
-burn_in = 50
+chain_length = 10
+burn_in = 2
 
 ###
 ### Sample from emulated loss landscape using parallel chains of MCMC
@@ -19,7 +19,7 @@ burn_in = 50
 using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
 using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
 
-# First, conglomerate all samples generated thus far by EKI
+# First, conglomerate all samples generated thus far by EKI.
 # This will be the training data for the GP emulator.
 n = eki.iteration
 X = hcat([ensemble_array(eki, i) for i in 0:n]...) 
@@ -28,8 +28,8 @@ not_nan_indices = findall(.!isnan.(y))
 X = X[:, not_nan_indices]
 y = y[not_nan_indices]
 
-# We will approximately non-dimensionalize all inputs according to mean and variance 
-# computed across all generated samples
+# We will approximately non-dimensionalize the inputs according to mean and variance 
+# computed across all generated training samples.
 zscore_X = ZScore(mean(X, dims=2), var(X, dims=2))
 normalize!(X, zscore_X)
 
@@ -39,7 +39,7 @@ cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
 # The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
 # The MCMC sampler takes in a function `nll` which maps θ to the negative log value Φ(θ). 
 # In the following example, we use a GP to emulate the EKI objective Φ_eki. 
-# This is the negative log of the density we wish to sample with MCMC. However, 
+# This proportional to the negative log of the density we wish to sample with MCMC. However, 
 # we must take into account the inherent uncertainty in the GP prediction.
 # To do so, we let Φ(θ) be Φ_eki(θ) + (1/2)log(det(Γgp)).
 predict = trained_gp_predict_function(X, y; standardize_X = false)
