@@ -1,135 +1,168 @@
-# In this example, we use EKI to tune the closure parameters of a HydrostaticFreeSurfaceModel 
-# with a CATKEVerticalDiffusivity closure in order to align the predictions of the model 
-# to those of a high-resolution LES data generated in LESbrary.jl. Here `predictions` refers to the
-# 1-D profiles of temperature, velocity, and turbulent kinetic energy horizontally averaged over a
-# 3-D physical domain.
+# # In this example, we use EKI to tune the closure parameters of a HydrostaticFreeSurfaceModel 
+# # with a CATKEVerticalDiffusivity closure in order to align the predictions of the model 
+# # to those of a high-resolution LES data generated in LESbrary.jl. Here `predictions` refers to the
+# # 1-D profiles of temperature, velocity, and turbulent kinetic energy horizontally averaged over a
+# # 3-D physical domain.
 
-pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
+# pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
 
-using Oceananigans
-using LinearAlgebra, Distributions, JLD2, DataDeps, Random
-using Oceananigans.Units
-using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
-using OceanBoundaryLayerParameterEstimation
-using ParameterEstimocean
-using ParameterEstimocean.Parameters: closure_with_parameters
-using ParameterEstimocean.PseudoSteppingSchemes
-using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
+# using Oceananigans
+# using LinearAlgebra, Distributions, JLD2, DataDeps, Random
+# using Oceananigans.Units
+# using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
+# using OceanBoundaryLayerParameterEstimation
+# using ParameterEstimocean
+# using ParameterEstimocean.Parameters: closure_with_parameters
+# using ParameterEstimocean.PseudoSteppingSchemes
+# using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 
-Random.seed!(1234)
+# Random.seed!(1234)
 
-Nz = 32
-Nensemble = 100
-architecture = GPU()
+# Nz = 32
+# Nensemble = 100
+# architecture = CPU()
 
-#####
-##### Set up ensemble model
-#####
+# #####
+# ##### Set up ensemble model
+# #####
 
-# begin
-#     Δt = 10.0
+# # begin
+# #     Δt = 10.0
+# #     field_names = (:b, :u, :v, :e)
+#         # fields_by_case = Dict(
+#         # "free_convection" => (:b, :e),
+#         # "weak_wind_strong_cooling" => (:b, :u, :v, :e),
+#         # "strong_wind_weak_cooling" => (:b, :u, :v, :e),
+#         # "strong_wind" => (:b, :u, :v, :e),
+#         # "strong_wind_no_rotation" => (:b, :u, :e)
+#         # )
 
-#     parameter_set = CATKEParametersRiDependent
+# #     parameter_set = CATKEParametersRiDependent
 
-#     parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
-#                     :Cˢc,   :Cˢu,  :Cˢe,
-#                     :Cᵇc,   :Cᵇu,  :Cᵇe,
-#                     :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
-#                     :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
-#                     :CᴷRiᶜ, :CᴷRiʷ)
+# #     parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
+# #                     :Cˢc,   :Cˢu,  :Cˢe,
+# #                     :Cᵇc,   :Cᵇu,  :Cᵇe,
+# #                     :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
+# #                     :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
+# #                     :CᴷRiᶜ, :CᴷRiʷ)
 
-#     parameter_set = ParameterSet(Set(parameter_names), 
-#                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
+# #     parameter_set = ParameterSet(Set(parameter_names), 
+# #                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
 
-#     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
+# #     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 
-#     directory = "calibrate_catke_to_lesbrary/"
-#     isdir(directory) || mkpath(directory)
+# #     directory = "calibrate_catke_to_lesbrary/"
+# #     isdir(directory) || mkpath(directory)
+# # end
+
+# Δt = 10minutes
+
+# field_names = (:b, :u, :v)
+
+# fields_by_case = Dict(
+#    "free_convection" => (:b),
+#    "weak_wind_strong_cooling" => (:b, :u, :v),
+#    "strong_wind_weak_cooling" => (:b, :u, :v),
+#    "strong_wind" => (:b, :u, :v),
+#    "strong_wind_no_rotation" => (:b, :u)
+# )
+
+# transformation = (b = Transformation(normalization=ZScore()),
+#                   u = Transformation(normalization=ZScore()),
+#                   v = Transformation(normalization=ZScore()))
+
+# parameter_set = RiBasedParameterSet
+
+# closure = closure_with_parameters(RiBasedVerticalDiffusivity(Float64;), parameter_set.settings)
+
+# true_parameters = parameter_set.settings
+
+# directory = "calibrate_ri_based_to_6_day_lesbrary"
+# isdir(directory) || mkpath(directory)
+
+# #####
+# ##### Build free parameters
+# #####
+
+# build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
+# free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
+
+# #####
+# ##### Build the Inverse Problem
+# #####
+
+# output_map = ConcatenatedOutputMap()
+
+# function inverse_problem(Nensemble, times)
+#     observations = SyntheticObservationsBatch(six_day_suite_path_2m, times, Nz; architecture, transformation, field_names, fields_by_case)
+#     simulation = lesbrary_ensemble_simulation(observations; Nensemble, architecture, closure, Δt)
+#     ip = InverseProblem(observations, simulation, free_parameters; output_map)
+#     return ip
 # end
 
-Δt = 10minutes
+# training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
+# validation_times = [3.0days, 3.5days, 4.0days]
+# testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
-parameter_set = RiBasedParameterSet
+# training = inverse_problem(Nensemble, training_times)
+# validation = inverse_problem(Nensemble, validation_times)
+# testing = inverse_problem(Nensemble, testing_times)
 
-closure = closure_with_parameters(RiBasedVerticalDiffusivity(Float64;), parameter_set.settings)
+# y = observation_map(training);
+# θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
+# G = forward_map(training, [θ])
+# zc = [mapslices(norm, G .- y, dims = 1)...]
 
-true_parameters = parameter_set.settings
+# ###
+# ### Calibrate
+# ###
 
-directory = "calibrate_ri_based_to_6_day_lesbrary"
-isdir(directory) || mkpath(directory)
+# iterations = 3
 
-#####
-##### Build free parameters
-#####
+# function estimate_noise_covariance(times)
+#     observation_high_res = SyntheticObservationsBatch(six_day_suite_path_1m, times, Nz; architecture, transformation, field_names, fields_by_case)
+#     observation_mid_res = SyntheticObservationsBatch(six_day_suite_path_2m, times, Nz; architecture, transformation, field_names, fields_by_case)
+#     observation_low_res = SyntheticObservationsBatch(six_day_suite_path_4m, times, Nz; architecture, transformation, field_names, fields_by_case)
 
-build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
-free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
+#     Nobs = Nz * (length(times) - 1) * sum([length(obs.forward_map_names) for obs in observation_low_res])
+#     noise_covariance = estimate_η_covariance(output_map, [observation_low_res, observation_mid_res, observation_high_res]) .+ Matrix(1e-10 * I, Nobs, Nobs)  
+#     return noise_covariance  
+# end
 
-#####
-##### Build the Inverse Problem
-#####
+# noise_covariance = estimate_noise_covariance(training_times)
 
-# track_times = Int.(floor.(range(1, stop = length(observations[1].times), length = 3)))
+# # noise_covariance = 1e-2
 
-output_map = ConcatenatedOutputMap()
+# resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
+# # pseudo_stepping = ConstantConvergence(convergence_ratio = 0.7)
+# # eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
+# eki = EnsembleKalmanInversion(training; noise_covariance, resampler)
 
-function inverse_problem(Nensemble, times)
-    observations = SixDaySuite(; times, Nz, architecture)
-    simulation = lesbrary_ensemble_simulation(observations; Nensemble, architecture, closure, Δt)
-    ip = InverseProblem(observations, simulation, free_parameters; output_map)
-    return ip
-end
 
-training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
-validation_times = [3.0days, 3.5days, 4.0days]
-testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
+# eki = EnsembleKalmanInversion(training; noise_covariance, resampler)
 
-training = inverse_problem(Nensemble, training_times)
-validation = inverse_problem(Nensemble, validation_times)
-testing = inverse_problem(Nensemble, testing_times)
+# # iterate!(eki; iterations = 5, show_progress=false)
 
-y = observation_map(training);
-θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
-G = forward_map(training, [θ])
-zc = [mapslices(norm, G .- y, dims = 1)...]
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = Constant())
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = Default())
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = Chada2021())
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = ConstantConvergence())
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = Kovachki2018())
+# iterate!(eki; iterations = 1, show_progress=false, pseudo_stepping = Iglesias2021())
+# iterate!(eki; iterations = 2, show_progress=false, pseudo_stepping = GPLineSearch())
 
-####
-#### Calibrate
-####
+##
+##
+##
+##
 
-iterations = 3
-
-data_path = datadep"six_day_suite_4m/free_convection_instantaneous_statistics.jld2" # Nz = 64
-data_path_highres = datadep"six_day_suite_2m/free_convection_instantaneous_statistics.jld2" # Nz = 128
-
-transformation = (b = Transformation(normalization=ZScore()),
-                  u = Transformation(normalization=ZScore()),
-                  v = Transformation(normalization=ZScore()),
-                  e = Transformation(normalization=RescaledZScore(1e-2)))
-
-field_names=(:b, :u, :v, :e)
-
-observation, observation_highres = SyntheticObservations.([data_path, data_path_highres]; 
-                                    field_names, 
-                                    times=training_times, 
-                                    transformation, 
-                                    regrid=(1, 1, Nz)
-                                    )
-
-Nobs = Nz * (length(training_times) - 1) * length(field_names)
-noise_covariance = estimate_η_covariance(output_map, [observation, observation_highres]) .+ Matrix(1e-10 * I, Nobs, Nobs)
-
-# noise_covariance = 1e-2
-pseudo_stepping = ConstantConvergence(convergence_ratio = 0.7)
-resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
-eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
-
+validation_noise_covariance = estimate_noise_covariance(validation_times)
 function validation_loss_final(pseudo_stepping)
     eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
     θ_end = iterate!(eki; iterations, pseudo_stepping)
     θ_end = collect(θ_end)
 
-    eki_validation = EnsembleKalmanInversion(validation; noise_covariance, pseudo_stepping, resampler)
+    eki_validation = EnsembleKalmanInversion(validation; noise_covariance = validation_noise_covariance, pseudo_stepping, resampler)
     G_end_validation = forward_map(validation, θ_end)[:, 1]
 
     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
@@ -160,17 +193,15 @@ using Optim: minimizer
 
 frobenius_norm(A) = sqrt(sum(A .^ 2))
 
+using ParameterEstimocean.PseudoSteppingSchemes: observations, obs_noise_covariance, inv_obs_noise_covariance
 function kovachki_2018_update2(Xₙ, Gₙ, eki; Δtₙ=1.0)
 
-    y = eki.mapped_observations
-    Γy = eki.noise_covariance
-    
+    y = observations(eki)
+    Γy = obs_noise_covariance(eki)
+
     N_ens = size(Xₙ, 2)
     g̅ = mean(G, dims = 2)
-    Γy⁻¹ = eki.precomputed_matrices[:inv_Γy]
-
-    # Compute flattened ensemble u = [θ⁽¹⁾, θ⁽²⁾, ..., θ⁽ᴶ⁾]
-    uₙ = vcat([Xₙ[:,j] for j in 1:N_ens]...)
+    Γy⁻¹ = inv_obs_noise_covariance(eki)
 
     # Fill transformation matrix (D(uₙ))ᵢⱼ = ⟨ G(u⁽ⁱ⁾) - g̅, Γy⁻¹(G(u⁽ʲ⁾) - y) ⟩
     D = zeros(N_ens, N_ens)
@@ -178,12 +209,17 @@ function kovachki_2018_update2(Xₙ, Gₙ, eki; Δtₙ=1.0)
         D[i, j] = dot(Gₙ[:, j] - g̅, Γy⁻¹ * (Gₙ[:, i] - y))
     end
 
-    # Update uₙ₊₁ = uₙ - Δtₙ₋₁ D(uₙ) uₙ
+    # Update
     Xₙ₊₁ = Xₙ - Δtₙ * Xₙ * D
 
     return Xₙ₊₁
 end
 
+using CairoMakie
+fig = Figure()
+lines(fig[1,1], collect(-3.0:0.5:0.0), a)
+lines(fig[1,2], collect(0.1:0.1:1.0), b)
+save(joinpath(directory, "1d_loss_landscape.png"), fig)
 
 ##
 ## Make sure kovachki_2018 agrees with iglesias_2013
@@ -247,4 +283,3 @@ save(joinpath(directory, "1d_loss_landscape.png"), fig)
 # @show parameters
 
 # include("emulate_sample.jl")
-
