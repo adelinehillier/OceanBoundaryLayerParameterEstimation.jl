@@ -10,6 +10,9 @@ export
     lesbrary_ensemble_simulation,
     estimate_η_covariance,
     SyntheticObservationsBatch,
+    two_day_suite_path_4m, four_day_suite_path_4m, six_day_suite_path_4m,
+    two_day_suite_path_2m, four_day_suite_path_2m, six_day_suite_path_2m,
+    two_day_suite_path_1m, four_day_suite_path_1m, six_day_suite_path_1m,
 
     # closure_parameters.jl
     bounds,

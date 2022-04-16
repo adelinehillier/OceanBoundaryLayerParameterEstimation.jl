@@ -12,10 +12,14 @@ fields_by_case = Dict(
    "strong_wind_no_rotation" => (:b, :u, :e)
 )
 
-function SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep = true, architecture = CPU())
+transformation = (b = Transformation(normalization=ZScore()),
+                  u = Transformation(normalization=ZScore()),
+                  v = Transformation(normalization=ZScore()),
+                  e = Transformation(normalization=RescaledZScore(1e-1)))
+
+function SyntheticObservationsBatch(path_fn, times, Nz; transformation=transformation, datadep = true, architecture = CPU(), field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case)
 
    observations = Vector{SyntheticObservations}()
-   field_names = (:b, :u, :v, :e)
 
    for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
 
@@ -28,23 +32,29 @@ function SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep 
    return observations
 end
 
-two_day_suite_path(case) = "two_day_suite_2m/$(case)_instantaneous_statistics.jld2"
-four_day_suite_path(case) = "four_day_suite_2m/$(case)_instantaneous_statistics.jld2"
-six_day_suite_path(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+# Nz = 256
+two_day_suite_path_1m(case) = "two_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+four_day_suite_path_1m(case) = "four_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+six_day_suite_path_1m(case) = "six_day_suite_1m/$(case)_instantaneous_statistics.jld2"
 
-transformation = (b = Transformation(normalization=ZScore()),
-                  u = Transformation(normalization=ZScore()),
-                  v = Transformation(normalization=ZScore()),
-                  e = Transformation(normalization=RescaledZScore(1e-1)))
+# Nz = 128
+two_day_suite_path_2m(case) = "two_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+four_day_suite_path_2m(case) = "four_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+six_day_suite_path_2m(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+
+# Nz = 64
+two_day_suite_path_4m(case) = "two_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+four_day_suite_path_4m(case) = "four_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+six_day_suite_path_4m(case) = "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
 
 TwoDaySuite(; transformation=transformation, times=[2hours, 12hours, 1days, 36hours, 2days], 
-            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(two_day_suite_path, transformation, times, Nz; architecture)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(two_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
 
 FourDaySuite(; transformation=transformation, times=[2hours, 1days, 2days, 3days, 4days], 
-            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(four_day_suite_path, transformation, times, Nz; architecture)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(four_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
 
 SixDaySuite(; transformation=transformation, times=[2hours, 1.5days, 3days, 4.5days, 6days], 
-            Nz=64, architecture=CPU()) = SyntheticObservationsBatch(six_day_suite_path, transformation, times, Nz; architecture)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(six_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
 
 function lesbrary_ensemble_simulation(observations; 
                                              Nensemble = 30,
@@ -85,6 +95,9 @@ function lesbrary_ensemble_simulation(observations;
 end
 
 function estimate_η_covariance(output_map, observations)
-    obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
-    return cov(transpose(obs_maps))
+
+   @assert length(observations) > 2 "A two-sample covariance matrix has rank one and is therefore singular. 
+                                      Please increase the number of `observations` to at least 3."
+   obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
+   return cov(transpose(obs_maps))
 end
