@@ -32,7 +32,7 @@ markov_link(nll, proposal, current_X, current_nll)
 - `proposal_X`: The X from the "proposal step". Was either rejected or accepted.
 - `proposal_nll`: value of nll(proposal_X)
 """
-function markov_link(; proposal_X, proposal_nll, current_X, current_nll)
+function markov_link(; proposal_X, proposal_nll::AbstractFloat, current_X, current_nll::AbstractFloat)
     Δ = (current_nll - proposal_nll)
 
     if accept(Δ)
