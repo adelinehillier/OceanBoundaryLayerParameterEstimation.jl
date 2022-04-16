@@ -71,3 +71,25 @@ plot_contour(eki, xs, ys, Φ, "Original", ces_directory; zlabel = "Φ", plot_min
 ### Run MCMC on the true forward map
 ###
 
+
+"""
+    collapse_ensemble(eki, iteration)
+
+Returns an `N_params x N_ensemble` array of parameter values for a given iteration `iteration`.
+"""
+function ensemble_array(eki, iteration)
+    ensemble = eki.iteration_summaries[iteration].parameters_unconstrained
+
+    N_params = length(param_names)
+    N_ensemble = length(ensemble)
+
+    @show ensemble
+
+    ensemble_array = zeros(N_params, N_ensemble)
+    @show ensemble_array
+    for (i, param_name) in enumerate(param_names)
+        view(ensemble_array, i, :) .= getproperty.(ensemble, param_name)
+    end
+
+    return ensemble_array
+end
