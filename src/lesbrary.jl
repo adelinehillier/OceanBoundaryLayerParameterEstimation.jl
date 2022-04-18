@@ -99,5 +99,5 @@ function estimate_η_covariance(output_map, observations)
    @assert length(observations) > 2 "A two-sample covariance matrix has rank one and is therefore singular. 
                                       Please increase the number of `observations` to at least 3."
    obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
-   return cov(transpose(obs_maps))
+   return cov(transpose(obs_maps), corrected=false)
 end
