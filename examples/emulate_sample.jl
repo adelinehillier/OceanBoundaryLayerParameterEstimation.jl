@@ -1,5 +1,25 @@
 # Define `training`, `data_dir`, `eki`
 
+"""
+    collapse_ensemble(eki, iteration)
+
+Returns an `N_params x N_ensemble` array of parameter values for a given iteration `iteration`.
+"""
+function constrained_ensemble_array(eki, iteration)
+    ensemble = eki.iteration_summaries[iteration].parameters
+    
+    param_names = keys(ensemble[1])
+    N_params = length(param_names)
+    N_ensemble = length(ensemble)
+
+    ensemble_array = zeros(N_params, N_ensemble)
+    for (i, param_name) in enumerate(param_names)
+        view(ensemble_array, i, :) .= getproperty.(ensemble, param_name)
+    end
+
+    return ensemble_array
+end
+
 ###
 ### Emulate and Sample
 ###
@@ -16,13 +36,13 @@ burn_in = 2
 ### Sample from emulated loss landscape using parallel chains of MCMC
 ###
 
-using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
+using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function
 using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
 
 # First, conglomerate all samples generated thus far by EKI.
 # This will be the training data for the GP emulator.
 n = eki.iteration
-X = hcat([ensemble_array(eki, i) for i in 0:n]...) 
+X = hcat([constrained_ensemble_array(eki, i) for i in 0:n]...) 
 y = vcat([sum.(eki.iteration_summaries[i].objective_values) for i in 0:n]...)
 not_nan_indices = findall(.!isnan.(y))
 X = X[:, not_nan_indices]
