@@ -19,7 +19,7 @@ function visualize!(ip::InverseProblem, parameters;
                     filename = "realizations.png"
                     )
 
-    isdir(directory) || makedir(directory)
+    isdir(directory) || mkdir(directory)
 
     model = ip.simulation.model
 
@@ -81,10 +81,12 @@ function visualize!(ip::InverseProblem, parameters;
                 # field data for each time step
                 obsn = getproperty(observation.field_time_serieses, field_name)
                 pred = getproperty(prediction.field_time_serieses, field_name)
-                pred = arch_array(CPU(), parent(parent(pred.data)))
-                obsn = arch_array(CPU(), parent(parent(obsn.data)))
+                obsn = arch_array(CPU(), obsn.data)
 
-                ax = Axis(fig[i,j]; xlabelpadding=0, xtickalign=1, ytickalign=1, 
+                offsets = pred.data.offsets
+                pred = arch_array(CPU(), parent(parent(pred.data)))
+
+                ax = Axis(fig[i,j]; xlabelpadding=0, xtickalign=1, ytickalign=1,
                                             merge(axis_position, info.axis_args)...)
 
                 hidespines!(ax, remove_spines...)
@@ -95,7 +97,9 @@ function visualize!(ip::InverseProblem, parameters;
                 for (color_index, t) in enumerate(snapshots)
                     l = lines!([obsn[1,1,1:grid.Nz,t] .* info.scaling ...], z; color = (colors[color_index], 0.4))
                     push!(lins, l)
-                    l = lines!([pred[1,1,1:grid.Nz,t] .* info.scaling ...], z; color = (colors[color_index], 1.0), linestyle = :dash)
+                    z_start = 1 - offsets[3]
+                    z_end = grid.Nz - offsets[3]
+                    l = lines!([pred[1,oi,z_start:z_end,t] .* info.scaling ...], z; color = (colors[color_index], 1.0), linestyle = :dash)
                     push!(lins, l)
                 end
 
