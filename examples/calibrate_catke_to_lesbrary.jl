@@ -19,7 +19,7 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 Random.seed!(1234)
 
 Nz = 32
-Nensemble = 1000
+Nensemble = 256
 architecture = GPU()
 
 #####
@@ -61,7 +61,7 @@ begin
 end
 
 # begin 
-#     Δt = 10minutes
+#     Δt = 5minutes
 
 #     field_names = (:b, :u, :v)
 
@@ -111,13 +111,13 @@ training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
 validation_times = [3.0days, 3.5days, 4.0days]
 testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
-# training_times = [1.0day, 1.5days]
+# training_times = [1day, 1day+10minutes, 1day+20minutes, 1day+30minutes]
 # validation_times = [2.0days, 2.5days, 3.0days, 3.0days, 3.5days, 4.0days]
 # testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
 training = inverse_problem(Nensemble, training_times)
-validation = inverse_problem(Nensemble, validation_times)
-testing = inverse_problem(Nensemble, testing_times)
+# validation = inverse_problem(Nensemble, validation_times)
+# testing = inverse_problem(Nensemble, testing_times)
 
 y = observation_map(training);
 θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
@@ -148,25 +148,33 @@ resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=tru
 # pseudo_stepping = ConstantConvergence(convergence_ratio = 0.7)
 # eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
 
-# eki = EnsembleKalmanInversion(training; noise_covariance, resampler, tikhonov = true)
-# iterate!(eki; iterations = 4, show_progress=false, pseudo_stepping = Constant())
-
-for (pseudo_scheme, name) in zip([Default(), ConstantConvergence(), Kovachki2018(), Iglesias2021(), GPLineSearch()],
+for (pseudo_scheme, name) in zip([Default(cov_threshold=0.01), ConstantConvergence(), Kovachki2018InitialConvergenceThreshold(), Iglesias2021(), GPLineSearch()],
                                 ["default", "constant_conv", "kovachki_2018", "iglesias2021", "gp_linesearch"])
 
+    @show name
     eki = EnsembleKalmanInversion(training; noise_covariance, resampler, tikhonov = true)
     iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping = pseudo_scheme)
 
-    dir = directory * name
-    plot_parameter_convergence!(eki, directory = dir)
-    plot_pairwise_ensembles!(eki, directory = dir)
-    plot_error_convergence!(eki, directory = dir)
-    
+    dir = directory * "_" * name
     visualize!(training, eki.iteration_summaries[end].ensemble_mean;
         field_names = [:u, :v, :b, :e],
         directory = dir,
-        filename = "realizations.pdf"
+        filename = "realizations_training.pdf"
     )
+    visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_validation.pdf"
+    )
+    visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_testing.pdf"
+    )
+
+    plot_parameter_convergence!(eki, dir)
+    plot_pairwise_ensembles!(eki, dir)
+    plot_error_convergence!(eki, dir)
 end
 
 # ###

@@ -9,15 +9,14 @@ using Oceananigans.Units
 using Plots
 using PyPlot
 using PlotlyJS
-using PyPlot
 
-architecture = CPU()
+using ParameterEstimocean.Parameters: unconstrained_prior
+
+architecture = GPU()
 Nensemble = 25
 forward_map_description = ""
 Δt = 10.0
-
-directory = "calibrate_convadj_to_lesbrary/$(iterations)_iters_$(Nensemble)_particles_$(forward_map_description)/$(noise_cov_name)/"
-isdir(directory) || mkpath(directory)
+iterations = 10
 
 ###
 ### Build an observation from "free convection" LESbrary simulation
@@ -32,11 +31,13 @@ observation, observation_highres = SyntheticObservations.([data_path, data_path_
                                     field_names=(:b,), 
                                     times=[3hours, 12hours, 48hours], 
                                     transformation, 
+                                    architecture,
                                     regrid=(1, 1, 32)
                                     )
 
 observations = [observation]
 output_map = ConcatenatedOutputMap()
+y = [observation_map(output_map, observation)...]
 
 Nobs = length(y)
 
@@ -46,12 +47,14 @@ Nobs = length(y)
 noise_cov_name = "noise_covariance_01"
 Γy = Matrix(0.01 * I, Nobs, Nobs)
 
+directory = "calibrate_convadj_to_lesbrary/$(iterations)_iters_$(Nensemble)_particles_$(forward_map_description)/$(noise_cov_name)/"
+isdir(directory) || mkpath(directory)
+
 begin
     f = CairoMakie.Figure(resolution = (500, 600), fontsize = 24)
     ax1 = Axis(f[1, 1], title = "y")
     ax2 = Axis(f[1, 2], title = "diag(Γy)")
 
-    y = [observation_map(output_map, observation)...]
     lines!(ax1, y, 1:length(y), color=:purple, linewidth=4)
 
     noise_var = diag(Γy)
@@ -98,7 +101,6 @@ unconstrained_prior2 = unconstrained_prior(priors[:background_κz])
 # samples2 = quantile(unconstrained_prior2, uniform_unit_samples)
 # initial_ensemble = hcat([[s1, s2] for s1 in samples1, s2 in samples2]...)
 
-iterations = 10
 eki = EnsembleKalmanInversion(calibration; noise_covariance = Γy)
 iterate!(eki; iterations = iterations)
 
