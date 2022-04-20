@@ -18,29 +18,31 @@ end
 
 field_guide = Dict(
     :u => (
-        axis_args = (ylabel="z (m)", xlabel="U velocity (dm/s)"),
-        scaling = 1e1,
+        units = "m/s",
+        name = "U-Velocity"
     ),
 
     :v => (
-        axis_args = (xlabel="V velocity (dm/s)",),
-        scaling = 1e1,
+        units = "m/s",
+        name = "V-Velocity"
     ),
 
     :b => (
-        axis_args = (xlabel="Buoyancy (mN/kg)",),
-        scaling = 1e3,
+        units = "N/kg",
+        name = "Buoyancy"
     ),
 
     :e => (
-        axis_args = (ylabel="z (m)", xlabel="TKE (cm²/s²)"),
-        scaling = 1e4,
+        units = "cm²/s²",
+        name = "TKE"
     )
 )
 
+order_of_magnitude(num) = Int(floor(log10(abs(num))))
+
 function tostring(num)
     num == 0 && return "0"
-    om = Int(floor(log10(abs(num))))
+    om = order_of_magnitude(num)
     num /= 10.0^om
     num = num%1 ≈ 0 ? Int(num) : round(num; digits=2)
     return "$(num)e$om"
