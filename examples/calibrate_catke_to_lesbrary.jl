@@ -19,15 +19,15 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 Random.seed!(1234)
 
 Nz = 32
-Nensemble = 256
-architecture = GPU()
+Nensemble = 128
+architecture = CPU()
 
 #####
 ##### Set up ensemble model
 #####
 
 begin
-    Δt = 10minute
+    Δt = 10minutes
     field_names = (:b, :u, :v, :e)
     fields_by_case = Dict(
     "free_convection" => (:b, :e),
@@ -40,11 +40,11 @@ begin
     parameter_set = CATKEParametersRiDependent
 
     parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
-                    :Cˢc,   :Cˢu,  :Cˢe,
-                    :Cᵇc,   :Cᵇu,  :Cᵇe,
-                    :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
-                    :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
-                    :CᴷRiᶜ, :CᴷRiʷ)
+                       :Cˢc,   :Cˢu,  :Cˢe,
+                       :Cᵇc,   :Cᵇu,  :Cᵇe,
+                       :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
+                       :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
+                       :CᴷRiᶜ, :CᴷRiʷ)
 
     parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
@@ -109,9 +109,9 @@ function estimate_noise_covariance(times)
     return noise_covariance  
 end
 
-noise_covariance = estimate_noise_covariance(training_times)
+# noise_covariance = estimate_noise_covariance(training_times)
 
-# noise_covariance = 1e-2
+noise_covariance = 1e-2
 
 resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
 

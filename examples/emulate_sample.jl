@@ -29,9 +29,58 @@ end
 n_chains = 100
 
 # Length and burn-in length per chain
-chain_length = 10
-burn_in = 2
+chain_length = 20
+burn_in = 5
 
+###
+### Sample from true eki objective using parallel chains of MCMC
+###
+
+using ParameterEstimocean.Parameters: unconstrained_prior
+
+# θ is a vector of parameter vectors
+function nll_true(θ)
+
+    # vector of vectors to 2d array
+    θ_mx = hcat(θ...)
+    inverse_normalize!(θ_mx, zscore_X)
+
+    G = forward_map(training, θ)
+
+    # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
+    objective_values = []
+    error = 0
+    for j in 1:size(θ_mx, 2)
+        try
+            error = sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=true))
+        catch DomainError
+            error = Inf
+        end
+        push!(objective_values, error)
+    end
+
+    # @show length(objective_values)
+    # @show findall(x -> isfinite(x), objective_values)
+
+    return objective_values
+end
+
+chain_X, chain_nll = markov_chain(nll_true, proposal, seed_X, chain_length; burn_in, n_chains)
+
+unscaled_chain_X = []
+for sample in chain_X
+    sample = sample[:,:]
+    inverse_normalize!(sample, zscore_X)
+    push!(unscaled_chain_X, sample)
+end
+
+n_columns = 3
+density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X, parameter_names; 
+                                n_columns,
+                                directory,
+                                filename = "mcmc_densities.png",
+                                label = "True",
+                                color = (:blue, 0.5))
 ###
 ### Sample from emulated loss landscape using parallel chains of MCMC
 ###
@@ -50,7 +99,7 @@ y = y[not_nan_indices]
 
 # We will approximately non-dimensionalize the inputs according to mean and variance 
 # computed across all generated training samples.
-zscore_X = ZScore(mean(X, dims=2), var(X, dims=2))
+zscore_X = ZScore(mean(X, dims=2), std(X, dims=2))
 normalize!(X, zscore_X)
 
 # Ensemble covariance across all generated samples
@@ -62,57 +111,39 @@ cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
 # This proportional to the negative log of the density we wish to sample with MCMC. However, 
 # we must take into account the inherent uncertainty in the GP prediction.
 # To do so, we let Φ(θ) be Φ_eki(θ) + (1/2)log(det(Γgp)).
-predict = trained_gp_predict_function(X, y; standardize_X = false)
+# predict = trained_gp_predict_function(X, y; standardize_X = false)
 
-function nll_emulator_(θ)
-    μ, Γgp = predict(θ)
-    return μ + log(det(Γgp))/2
+function nll_emulator(θ) # θ is an Nparam x N matrix 
+    
+    # vector of vectors to Nparam x N array
+    θ_mx = hcat(θ...)
+
+    μ, Γgp = predict(θ_mx)
+    return μ + log.(diag(Γgp))/2 # returns a length-N vector
 end
-nll_emulator(θ) = nll_emulator_([θ[:, j] for j in size(θ, 2)])
 
 N_par = size(X, 1)
-perturb() = rand(MvNormal(zeros(N_par), cov_θθ_all_iters))
+
+C = Hermitian(cov_θθ_all_iters)
+@assert C ≈ cov_θθ_all_iters
+perturb() = rand(MvNormal(zeros(N_par), C))
 proposal(θ) = θ + perturb()
 seed_X = [perturb() for _ in 1:n_chains] # Where to initialize θ
 
-(; chain_X, chain_nll) = markov_chain(nll_emulator, proposal, seed_X, chain_length; burn_in, n_chains)
-inverse_normalize!.(chain_X, zscore_X)
+chain_X_emulated, chain_nll_emulated = markov_chain(nll_emulator, proposal, seed_X, chain_length; burn_in, n_chains)
+# inverse_normalize!.(chain_X_emulated, zscore_X)
 
-n_columns = 3
-plot_mcmc_densities!(chain_X, parameter_names; 
-                        n_columns,
-                        directory,
-                        filename = "mcmc_densities_emulated_loss_landscape.png")
-
-###
-### Sample from true eki objective using parallel chains of MCMC
-###
-
-# Pre-compute inv(sqrt(Γθ) to save redundant computations
-fp = eki.inverse_problem.free_parameters
-priors = fp.priors
-unconstrained_priors = [unconstrained_prior(priors[name]) for name in fp.names]
-Γθ = diagm( getproperty.(unconstrained_priors, :σ).^2 )
-inv_sqrt_Γθ = inv(sqrt(Γθ))
-
-# θ is a vector of parameter vectors
-function nll_true(θ)
-
-    # vector of vectors to 2d array
-    θ = hcat(θ...)
-    inverse_normalize!(θ, zscore_X)
-
-    G = forward_map(training, θ)
-
-    # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-    objective_values = [eki_objective(eki, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
-    return sum.(objective_values)
+unscaled_chain_X_emulated = []
+for sample in chain_X_emulated
+    sample = sample[:,:]
+    inverse_normalize!(sample, zscore_X)
+    push!(unscaled_chain_X_emulated, sample)
 end
 
-(; chain_X, chain_nll) = markov_chain(nll_true, proposal, seed_X, chain_length; burn_in, n_chains)
-inverse_normalize!.(chain_X, zscore_X)
-
-plot_mcmc_densities!(chain_X, parameter_names; 
-                        n_columns,
-                        directory,
-                        filename = "mcmc_densities_true_loss_landscape.png")
+plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X_emulated, parameter_names; 
+                                n_columns,
+                                directory,
+                                filename = "mcmc_densities.png",
+                                label = "Emulated",
+                                color = (:orange, 0.5))
+                            
