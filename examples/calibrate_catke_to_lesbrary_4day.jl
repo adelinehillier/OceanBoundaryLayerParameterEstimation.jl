@@ -19,15 +19,18 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 Random.seed!(1234)
 
 Nz = 32
-Nensemble = 256
+Nensemble = 64
 architecture = GPU()
+Δt = 5minutes
+
+directory = "calibrate_catke_to_lesbrary_4day_5minute/"
+isdir(directory) || mkpath(directory)
 
 #####
 ##### Set up ensemble model
 #####
 
 begin
-    Δt = 10minutes
     field_names = (:b, :u, :v, :e)
     fields_by_case = Dict(
     "free_convection" => (:b, :e),
@@ -55,9 +58,6 @@ begin
                     e = Transformation(normalization=RescaledZScore(1e-1)))
             
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
-
-    directory = "calibrate_catke_to_lesbrary_4day_5minute/"
-    isdir(directory) || mkpath(directory)
 end
 
 #####
