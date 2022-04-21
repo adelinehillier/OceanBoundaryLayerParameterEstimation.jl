@@ -32,7 +32,7 @@ markov_link(nll, proposal, current_X, current_nll)
 - `proposal_X`: The X from the "proposal step". Was either rejected or accepted.
 - `proposal_nll`: value of nll(proposal_X)
 """
-function markov_link(; proposal_X, proposal_nll::AbstractFloat, current_X, current_nll::AbstractFloat)
+function markov_link(proposal_X, proposal_nll::AbstractFloat, current_X, current_nll::AbstractFloat)
     Δ = (current_nll - proposal_nll)
 
     if accept(Δ)
@@ -44,7 +44,7 @@ function markov_link(; proposal_X, proposal_nll::AbstractFloat, current_X, curre
     return new_X, new_nll
 end
 
-function markov_link(; proposal_X, proposal_nll::Vector, current_X, current_nll::Vector)
+function markov_link(proposal_X, proposal_nll::Vector, current_X, current_nll::Vector)
 
     # Vector of NamedTuples
     result = markov_link.(proposal_X, proposal_nll, current_X, current_nll)
@@ -99,7 +99,7 @@ function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_cha
     for i = 1:chain_length-1
         for chain in n_chains
             proposal_X, proposal_nll = proposal_X_nll(nll, proposal, current_X, current_nll)
-            new_X, new_nll = markov_link(; proposal_X, proposal_nll, current_X, current_nll)
+            new_X, new_nll = markov_link(proposal_X, proposal_nll, current_X, current_nll)
             current_X, current_nll = new_X, new_nll # mcmc update
             push!(chain_X, new_X)
             push!(chain_nll, new_nll)
@@ -112,5 +112,11 @@ function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_cha
     end
 
     total_burn_in = burn_in * n_chains
+
+    n_successful = length(chain_X) - total_burn_in
+    n_forward_runs = n_chains * (chain_length - burn_in)
+    accept_percent = n_successful * 100 / n_forward_runs
+    @info "$n_successful out of $n_forward_runs proposed samples ($accept_percent%) were accepted."
+    
     return (chain_X[total_burn_in:end], chain_nll[total_burn_in:end])
 end
