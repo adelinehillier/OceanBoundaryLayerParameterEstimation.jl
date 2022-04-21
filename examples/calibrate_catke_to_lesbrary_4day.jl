@@ -27,7 +27,7 @@ architecture = GPU()
 #####
 
 begin
-    Δt = 5minutes
+    Δt = 10minutes
     field_names = (:b, :u, :v, :e)
     fields_by_case = Dict(
     "free_convection" => (:b, :e),
