@@ -34,7 +34,7 @@ export
     plot_error_convergence!,
 
     # uq_visuals.jl
-    plot_mcmc_densities,
+    plot_mcmc_densities!,
 
     # visualize_profile_predictions.jl
     visualize!

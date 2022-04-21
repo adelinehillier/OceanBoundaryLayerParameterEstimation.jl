@@ -82,7 +82,7 @@ function plot_pairwise_ensembles!(eki, directory, true_parameters=nothing)
     end
 end
 
-function plot_error_convergence!(f, eki, directory, true_parameters=nothing)
+function plot_error_convergence!(f, eki, directory; true_parameters=nothing)
 
     means = ensemble_means(eki)
     N_iter = length(eki.iteration_summaries) - 1 # exclude 0th element
@@ -107,11 +107,11 @@ function plot_error_convergence!(f, eki, directory, true_parameters=nothing)
     nothing
 end
 
-function plot_error_convergence!(eki, directory, true_parameters=nothing)
+function plot_error_convergence!(eki, directory; true_parameters=nothing)
 
     f = Figure()
 
-    plot_error_convergence!(f, eki, directory, true_parameters)
+    plot_error_convergence!(f, eki, directory; true_parameters)
 
     save(joinpath(directory, "error_convergence_summary.png"), f);
 end
