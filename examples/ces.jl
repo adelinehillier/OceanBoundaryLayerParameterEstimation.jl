@@ -36,7 +36,7 @@ predict = trained_gp_predict_function(X, Φ)
 using OceanLearning.Transformations: ZScore, normalize!
 using Statistics
 
-normalize!(Φ, ZScore(mean(Φ), var(Φ)))
+normalize!(Φ, ZScore(mean(Φ), std(Φ)))
 
 ces_directory = joinpath(directory, "QuickCES/")
 isdir(ces_directory) || mkdir(ces_directory)
