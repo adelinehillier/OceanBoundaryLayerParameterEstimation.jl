@@ -1,8 +1,11 @@
 using ParameterEstimocean.InverseProblems: vectorize, forward_run!, transpose_model_output
 using Oceananigans.Architectures: arch_array
 using CairoMakie
+using LaTeXStrings
 
 include("visualize_profile_predictions_utils.jl")
+
+guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
 
 """
     visualize!(ip::InverseProblem, parameters;
@@ -64,7 +67,11 @@ function visualize!(ip::InverseProblem, parameters;
 
             middle = j > 1 && j < n_fields
             remove_spines = j == 1 ? (:t, :r) : j == n_fields ? (:t, :l) : (:t, :l, :r)
-            axis_position = j == n_fields ? (ylabelposition=:right, yaxisposition=:right) : NamedTuple()
+            axis_args = j == n_fields ? (ylabelposition=:right, yaxisposition=:right) : NamedTuple()
+
+            if j == 1 || j == n_fields
+                axis_args = merge(axis_args, (ylabel="z (m)",))
+            end
 
             j += 1 # reserve the first column for row labels
 
@@ -81,13 +88,26 @@ function visualize!(ip::InverseProblem, parameters;
                 # field data for each time step
                 obsn = getproperty(observation.field_time_serieses, field_name)
                 pred = getproperty(prediction.field_time_serieses, field_name)
-                obsn = arch_array(CPU(), obsn.data)
+                obsn = view(arch_array(CPU(), obsn.data), 1,1,1:grid.Nz,:)
 
-                offsets = pred.data.offsets
-                pred = arch_array(CPU(), parent(parent(pred.data)))
+                z_offset = pred.data.offsets[3]
+                z_start = 1 - z_offset
+                z_end = grid.Nz - z_offset
 
-                ax = Axis(fig[i,j]; xlabelpadding=0, xtickalign=1, ytickalign=1,
-                                            merge(axis_position, info.axis_args)...)
+                pred = view(arch_array(CPU(), parent(parent(pred.data))), 1,oi,z_start:z_end,:)
+
+                om = order_of_magnitude(maximum(abs.(obsn)))
+                scaling = 10^(-om)
+                om_string = string([getindex(guide, parse(Int64, c)+1) for c in string(abs(om))]...)
+                om_string = om < 0 ? "⁻" * om_string : om_string
+                xlabel = string("$(info.name) (10$(om_string) $(info.units))")
+
+                ax = Axis(fig[i,j]; xlabelpadding=0, 
+                                    xtickalign=1, 
+                                    ytickalign=1, 
+                                    xlabel, 
+                                    xticks=LinearTicks(3), 
+                                    axis_args...)
 
                 hidespines!(ax, remove_spines...)
 
@@ -95,17 +115,15 @@ function visualize!(ip::InverseProblem, parameters;
 
                 lins = []
                 for (color_index, t) in enumerate(snapshots)
-                    l = lines!([obsn[1,1,1:grid.Nz,t] .* info.scaling ...], z; color = (colors[color_index], 0.4))
+                    l = lines!([obsn[:,t] .* scaling...], z; color = (colors[color_index], 0.4))
                     push!(lins, l)
-                    z_start = 1 - offsets[3]
-                    z_end = grid.Nz - offsets[3]
-                    l = lines!([pred[1,oi,z_start:z_end,t] .* info.scaling ...], z; color = (colors[color_index], 1.0), linestyle = :dash)
+                    l = lines!([pred[:,t] .* scaling...], z; color = (colors[color_index], 1.0), linestyle = :dash)
                     push!(lins, l)
                 end
 
                 times = @. round((targets[snapshots] - targets[snapshots[1]]) / 86400, sigdigits=2)
 
-                legendlabel(time) = ["LES, t = $time days", "Model, t = $time days"]
+                legendlabel(time) = ["Observation, t = $time days", "Model, t = $time days"]
                 Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=2)
                 lins = []
             else

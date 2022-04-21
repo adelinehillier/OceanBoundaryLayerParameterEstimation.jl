@@ -80,17 +80,13 @@ function inverse_problem(Nensemble, times)
     return ip
 end
 
-# training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
-# validation_times = [3.0days, 3.5days, 4.0days]
-# testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
-
-training_times = [1day, 1.5days, 2.0days]
-validation_times = [2.0days, 2.5days, 3.0days, 3.0days, 3.5days, 4.0days]
+training_times = [1.0day, 1.5days, 2.0days, 2.5days, 3.0days]
+validation_times = [3.0days, 3.5days, 4.0days]
 testing_times = [4.0days, 4.5days, 5.0days, 5.5days, 6.0days]
 
 training = inverse_problem(Nensemble, training_times)
-# validation = inverse_problem(Nensemble, validation_times)
-# testing = inverse_problem(Nensemble, testing_times)
+validation = inverse_problem(Nensemble, validation_times)
+testing = inverse_problem(Nensemble, testing_times)
 
 y = observation_map(training);
 θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
@@ -118,32 +114,45 @@ end
 noise_covariance = 1e-2
 
 resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
-# pseudo_stepping = ConstantConvergence(convergence_ratio = 0.7)
-# eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
 
-pseudo_stepping = GPLineSearch()
+pseudo_stepping = Iglesias2021()
 eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
 iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
 visualize!(training, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_training_gplinesearch.pdf"
+    directory = pwd(),
+    filename = "realizations_training_estimated_gamma_y.pdf"
 )
 visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_validation_gplinesearch.pdf"
+    directory = pwd(),
+    filename = "realizations_validation_estimated_gamma_y.pdf"
 )
 visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_testing_gplinesearch.pdf"
+    directory = pwd(),
+    filename = "realizations_testing_estimated_gamma_y.pdf"
 )
 
-plot_parameter_convergence!(eki, directory)
-plot_error_convergence!(eki, directory)
+plot_parameter_convergence!(eki, pwd())
+plot_error_convergence!(eki, pwd())
 
-# for (pseudo_scheme, name) in zip([Default(cov_threshold=0.01), ConstantConvergence(), Kovachki2018InitialConvergenceThreshold(), Iglesias2021(), GPLineSearch()],
+# eki = EnsembleKalmanInversion(training; noise_covariance=1e-2, pseudo_stepping, resampler, tikhonov = true)
+# iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
+# visualize!(training, eki.iteration_summaries[end].ensemble_mean;
+#     field_names = [:u, :v, :b, :e],
+#     directory = pwd(),
+#     filename = "realizations_training_constant_gamma_y.pdf"
+# )
+# visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
+#     field_names = [:u, :v, :b, :e],
+#     directory = pwd(),
+#     filename = "realizations_validation_constant_gamma_y.pdf"
+# )
+
+
+
+# for (pseudo_scheme, name) in zip([Default(cov_threshold=0.01), ConstantConvergence(convergence_ratio=0.7), Kovachki2018InitialConvergenceThreshold(), Iglesias2021(), GPLineSearch()],
 #                                 ["default", "constant_conv", "kovachki_2018", "iglesias2021", "gp_linesearch"])
 
 #     @show name
@@ -156,16 +165,16 @@ plot_error_convergence!(eki, directory)
 #         directory = dir,
 #         filename = "realizations_training.pdf"
 #     )
-#     visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
-#         field_names = [:u, :v, :b, :e],
-#         directory = dir,
-#         filename = "realizations_validation.pdf"
-#     )
-#     visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
-#         field_names = [:u, :v, :b, :e],
-#         directory = dir,
-#         filename = "realizations_testing.pdf"
-#     )
+#     # visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
+#     #     field_names = [:u, :v, :b, :e],
+#     #     directory = dir,
+#     #     filename = "realizations_validation.pdf"
+#     # )
+#     # visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
+#     #     field_names = [:u, :v, :b, :e],
+#     #     directory = dir,
+#     #     filename = "realizations_testing.pdf"
+#     # )
 
 #     plot_parameter_convergence!(eki, dir)
 #     plot_pairwise_ensembles!(eki, dir)
