@@ -38,7 +38,8 @@ export
     plot_mcmc_densities!,
 
     # visualize_profile_predictions.jl
-    visualize!
+    visualize!,
+    open_output_file
 
 include("lesbrary.jl")
 include("closure_parameters.jl")

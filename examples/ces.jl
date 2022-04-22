@@ -58,7 +58,7 @@ ys = x[2, :]
 
 using Plots
 p = Plots.plot(gp)
-Plots.savefig(p, joinpath(directory, "hello.pdf"))
+Plots.savefig(p, joinpath(directory, "hello.png"))
 
 plot_contour(eki, xs, ys, Φ_predicted, "GP_emulated", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="GP-Emulated EKI Objective, Φ")
 plot_contour(eki, xs, ys, Φ, "Original", ces_directory; zlabel = "Φ", plot_minimizer=true, plot_scatters=false, title="EKI Objective, Φ")

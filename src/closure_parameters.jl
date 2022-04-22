@@ -54,7 +54,6 @@ catke_parameter_guide = Dict(:Cᴰ => (name = "Dissipation parameter (TKE equati
                         :Cˢe => (name = "Convective adjustment TKE parameter", latex = L"C^s_E", default = 0.711, bounds = (0.0, 1.0)),
 )
 
-
 ri_based_parameter_guide = Dict(:ν₀ => (name = "base viscosity", latex = L"\nu_0", default = 0.01, bounds = (0.0, 1.0)), 
                         :κ₀ => (name = "base diffusivity", latex = L"\kappa_0", default = 0.1, bounds = (0.0, 10.0)), 
                         :Ri₀ν => (name = "Ri viscosity", latex = L"Ri_0\nu", default = -0.5, bounds = (-20.0, 20.0)), 

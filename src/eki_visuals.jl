@@ -36,10 +36,13 @@ function plot_parameter_convergence!(eki, directory; true_parameters=nothing, n_
         isnothing(true_parameters) || hlines!(ax, [true_parameters[pname]], color = :red)
     end
 
-    save(joinpath(directory, "parameter_convergence.pdf"), fig)
+    save(joinpath(directory, "parameter_convergence.png"), fig)
 end
 
 function plot_pairwise_ensembles!(eki, directory, true_parameters=nothing)
+
+    path = joinpath(directory, "pairwise_ensembles")
+    isdir(path) || mkdir(path)
 
     pnames = parameter_names(eki)
     N_param = length(pnames)
@@ -77,7 +80,7 @@ function plot_pairwise_ensembles!(eki, directory, true_parameters=nothing)
             hidedecorations!(axright, grid = false)
             xlims!(axright, 0, 10)
             ylims!(axtop, 0, 10)
-            save(joinpath(directory, "pairwise_ensembles_$(pname1)_$(pname2).pdf"), f)
+            save(joinpath(path, "pairwise_ensembles_$(pname1)_$(pname2).png"), f)
         end
     end
 end
