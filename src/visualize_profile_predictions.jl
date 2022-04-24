@@ -5,6 +5,7 @@ using LaTeXStrings
 
 include("visualize_profile_predictions_utils.jl")
 
+# Temporary hack -- couldn't get Makie to render LaTeX properly
 guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
 
 """
