@@ -1,9 +1,14 @@
 # Define `training`, `data_dir`, `eki`
 
 using Statistics
+using LinearAlgebra
+
+# directory to which to save the files generated in this script
+dir = joinpath(directory, "emulate_sample_constrained")
+isdir(dir) || mkdir(dir)
 
 """
-    collapse_ensemble(eki, iteration)
+constrained_ensemble_array(eki, iteration)
 
 Returns an `N_params x N_ensemble` array of parameter values for a given iteration `iteration`.
 """
@@ -34,8 +39,8 @@ n_chains = 128
 chain_length = 1000
 burn_in = 250
 
-chain_length_emulate = 1000
-burn_in_emulate = 250
+chain_length_emulate = chain_length
+burn_in_emulate = burn_in
 
 ###
 ### Sample from emulated loss landscape using parallel chains of MCMC
@@ -48,7 +53,11 @@ using ParameterEstimocean.Parameters: transform_to_constrained
 # First, conglomerate all samples generated thus far by EKI.
 # This will be the training data for the GP emulator.
 # We will filter out all failed particles.
-n = eki.iteration
+
+# n = eki.iteration
+n = 5
+@info "Performing emulation based on samples from the first $n iterations of EKI."
+
 # X = hcat([constrained_ensemble_array(eki, i) for i in 0:n]...) # constrained
 X = hcat([ensemble_array(eki, iter) for iter in 0:n]...) # unconstrained
 y = vcat([sum.(eki.iteration_summaries[i].objective_values) for i in 0:n]...)
@@ -97,7 +106,7 @@ begin
     hist!(ax, y; bins=100)
     vlines!(ax, [μy + σy * zscore for zscore = 0:3], color = :red; label = "z-score = 0:3")
     obs_fig[1,2] = Legend(obs_fig, ax, nothing; framevisible=true)
-    save(joinpath(directory, "objective_distribution_all_iters_log.png"), obs_fig)
+    save(joinpath(dir, "objective_distribution_all_iters_log.png"), obs_fig)
 
     # density
     obs_fig = Figure()
@@ -105,7 +114,7 @@ begin
     density!(ax, y)
     vlines!(ax, [μy + σy * zscore for zscore = 0:3], color = :red; label = "z-score = 0:3")
     obs_fig[1,2] = Legend(obs_fig, ax, nothing; framevisible=true)
-    save(joinpath(directory, "objective_distribution_all_iters_linear.png"), obs_fig)
+    save(joinpath(dir, "objective_distribution_all_iters_linear.png"), obs_fig)
 end
 
 # We will approximately non-dimensionalize the inputs according to mean and variance 
@@ -129,25 +138,6 @@ cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
 predict = trained_gp_predict_function(X, y; standardize_X = false, zscore_limit = nothing)
 
 begin
-    ŷ, Γgp = predict(X)
-    μy, σy = (mean(ŷ), std(ŷ))
-
-    # hist
-    obs_fig = Figure()
-    ax = Axis(obs_fig[1,1], xlabel = "Emulated EKI Objective evaluated at training points", ylabel = "Frequency", xscale=log10)
-    hist!(ax, y; bins=100)
-    vlines!(ax, [μy + σy * zscore for zscore = 0:3], color = :red; label = "z-score = 0:3")
-    obs_fig[1,2] = Legend(obs_fig, ax, nothing; framevisible=true)
-    save(joinpath(directory, "emulated_objective_distribution_all_iters_log.png"), obs_fig)
-
-    # density
-    obs_fig = Figure()
-    ax = Axis(obs_fig[1,1], xlabel = "Emulated EKI Objective evaluated at training points", ylabel = "Frequency")
-    density!(ax, y)
-    vlines!(ax, [μy + σy * zscore for zscore = 0:3], color = :red; label = "z-score = 0:3")
-    obs_fig[1,2] = Legend(obs_fig, ax, nothing; framevisible=true)
-    save(joinpath(directory, "emulated_objective_distribution_all_iters_linear.png"), obs_fig)
-
     fig = Figure()
     ŷ_validation, Γgp_validation = predict(X_validation)
     r = Statistics.cor(y_validation, ŷ_validation)
@@ -155,11 +145,9 @@ begin
     ax = Axis(fig[1,1], xlabel = "True EKI objective", 
                             ylabel = "Emulated EKI objective",
                             title = "Predictions on reserved subset of training points. Pearson R: $r")
-    scatter!(ax, ŷ_validation, y_validation)
-    save(joinpath(directory, "emulator_validation_performance_linear_linear.png"), fig)
+    scatter!(ax, y_validation, ŷ_validation)
+    save(joinpath(dir, "emulator_validation_performance_linear_linear.png"), fig)
 end
-
-Statistics.cor(y_validation, ŷ_validation)
 
 function nll_emulator(θ) # θ is an Nparam x N matrix 
     
@@ -186,9 +174,9 @@ unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_proble
 # unscaled_chain_X_emulated = [samples[:,j] for j in 1:size(samples, 2)]
 
 n_columns = 3
-density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_names; 
+density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                 n_columns,
-                                directory,
+                                directory = dir,
                                 filename = "mcmc_densities.png",
                                 label = "Emulated",
                                 color = (:blue, 0.5))
@@ -232,9 +220,9 @@ inverse_normalize!(samples, zscore_X)
 unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
 
-plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_names; 
+plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
                                 n_columns,
-                                directory,
+                                directory = dir,
                                 filename = "mcmc_densities.png",
                                 label = "True",
                                 color = (:orange, 0.5))
