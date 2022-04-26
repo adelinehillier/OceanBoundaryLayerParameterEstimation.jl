@@ -22,11 +22,11 @@ Nz = 32
 Nensemble = 128
 architecture = GPU()
 Δt = 5minutes
-# prior_type = "scaled_logit_normal"
-prior_type = "normal"
+prior_type = "scaled_logit_normal"
+# prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take2/"
 isdir(directory) || mkpath(directory)
 
 path = joinpath(directory, "calibration_setup.txt")
@@ -70,7 +70,12 @@ end
 ##### Build free parameters
 #####
 
-build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
+function build_prior(name)
+    b = bounds(name, parameter_set)
+    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
+end
+
 free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
 
 #####
@@ -113,34 +118,32 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 
 iterations = 10
 
-function estimate_noise_covariance(times)
-    observation_high_res = SyntheticObservationsBatch(four_day_suite_path_1m, times, Nz; architecture, transformation, field_names, fields_by_case)
-    observation_mid_res = SyntheticObservationsBatch(four_day_suite_path_2m, times, Nz; architecture, transformation, field_names, fields_by_case)
-    observation_low_res = SyntheticObservationsBatch(four_day_suite_path_4m, times, Nz; architecture, transformation, field_names, fields_by_case)
-
-    Nobs = Nz * (length(times) - 1) * sum([length(obs.forward_map_names) for obs in observation_low_res])
-    noise_covariance = estimate_η_covariance(output_map, [observation_low_res, observation_mid_res, observation_high_res]) .+ Matrix(1e-10 * I, Nobs, Nobs)  
+function estimate_noise_covariance(data_path_fns, times)
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times, Nz; architecture, transformation, field_names, fields_by_case) for dp in data_path_fns]
+    Nobs = Nz * (length(times) - 1) * sum([length(obs.forward_map_names) for obs in obsns_various_resolutions[1]])
+    noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
+    noise_covariance = noise_covariance + I(Nobs) * mean(noise_covariance)/10
     return noise_covariance  
 end
 
-noise_covariance = estimate_noise_covariance(training_times)
+noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m], training_times)
 
-resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
+resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
 pseudo_stepping = Iglesias2021()
 eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
 final_params = iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
-visualize!(training, eki.iteration_summaries[end].ensemble_mean;
+visualize!(training, final_params;
     field_names = [:u, :v, :b, :e],
     directory,
     filename = "realizations_training_iglesias2021.png"
 )
-visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
+visualize!(validation, final_params;
     field_names = [:u, :v, :b, :e],
     directory,
     filename = "realizations_validation_iglesias2021.png"
 )
-visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
+visualize!(testing, final_params;
     field_names = [:u, :v, :b, :e],
     directory,
     filename = "realizations_testing_iglesias2021.png"
@@ -157,4 +160,20 @@ plot_parameter_convergence!(eki, directory)
 plot_error_convergence!(eki, directory)
 plot_pairwise_ensembles!(eki, directory)
 
-include("emulate_sample.jl")
+###
+### Hyperparameter optimization
+###
+
+# include("hyperparameter_optimization.jl")
+
+###
+### CES
+###
+
+include("emulate_sample_forward_map.jl")
+
+###
+### Sensitivity analysis
+###
+
+include("sensitivity_analysis.jl")
