@@ -38,7 +38,7 @@ field_guide = Dict(
     )
 )
 
-order_of_magnitude(num) = Int(floor(log10(abs(num))))
+order_of_magnitude(num) = num == 0 ? 0 : Int(floor(log10(abs(num))))
 
 function tostring(num)
     num == 0 && return "0"
