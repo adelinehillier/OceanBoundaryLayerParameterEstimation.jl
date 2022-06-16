@@ -20,14 +20,29 @@ Random.seed!(1234)
 
 Nz = 32
 Nensemble = 128
-architecture = CPU()
+architecture = GPU()
+# prior_type = "scaled_logit_normal"
+prior_type = "normal"
+
+path = joinpath(directory, "results.txt")
+o = open_output_file(path)
+write(o, "Training relative weights: $(calibration.relative_weights) \n")
+write(o, "Validation relative weights: $(validation.relative_weights) \n")
+write(o, "Training default parameters: $(validation.default_parameters) \n")
+write(o, "Validation default parameters: $(validation.default_parameters) \n")
+
+write(o, "------------ \n \n")
+default_parameters = calibration.default_parameters
+train_loss_default = calibration(default_parameters)
+valid_loss_default = validation(default_parameters)
+write(o, "Default parameters: $(default_parameters) \nLoss on training: $(train_loss_default) \nLoss on validation: $(valid_loss_default) \n------------ \n \n")
 
 #####
 ##### Set up ensemble model
 #####
 
 begin
-    Δt = 10minutes
+    Δt = 5minutes
     field_names = (:b, :u, :v, :e)
     fields_by_case = Dict(
     "free_convection" => (:b, :e),
@@ -50,9 +65,9 @@ begin
                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
 
     transformation = (b = Transformation(normalization=ZScore()),
-                    u = Transformation(normalization=ZScore()),
-                    v = Transformation(normalization=ZScore()),
-                    e = Transformation(normalization=RescaledZScore(1e-1)))
+                      u = Transformation(normalization=ZScore()),
+                      v = Transformation(normalization=ZScore()),
+                      e = Transformation(normalization=RescaledZScore(1e-1)))
             
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 
@@ -64,7 +79,12 @@ end
 ##### Build free parameters
 #####
 
-build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
+function build_prior(name)
+    b = bounds(name, parameter_set)
+    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    prior_type == "normal" && return Normal(mean(b), -(b...)/6)
+end
+
 free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
 
 #####
@@ -121,17 +141,17 @@ iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
 visualize!(training, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
     directory = pwd(),
-    filename = "realizations_training_estimated_gamma_y.pdf"
+    filename = "realizations_training_estimated_gamma_y.png"
 )
 visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
     directory = pwd(),
-    filename = "realizations_validation_estimated_gamma_y.pdf"
+    filename = "realizations_validation_estimated_gamma_y.png"
 )
 visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
     directory = pwd(),
-    filename = "realizations_testing_estimated_gamma_y.pdf"
+    filename = "realizations_testing_estimated_gamma_y.png"
 )
 
 plot_parameter_convergence!(eki, pwd())
@@ -142,15 +162,13 @@ plot_error_convergence!(eki, pwd())
 # visualize!(training, eki.iteration_summaries[end].ensemble_mean;
 #     field_names = [:u, :v, :b, :e],
 #     directory = pwd(),
-#     filename = "realizations_training_constant_gamma_y.pdf"
+#     filename = "realizations_training_constant_gamma_y.png"
 # )
 # visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
 #     field_names = [:u, :v, :b, :e],
 #     directory = pwd(),
-#     filename = "realizations_validation_constant_gamma_y.pdf"
+#     filename = "realizations_validation_constant_gamma_y.png"
 # )
-
-
 
 # for (pseudo_scheme, name) in zip([Default(cov_threshold=0.01), ConstantConvergence(convergence_ratio=0.7), Kovachki2018InitialConvergenceThreshold(), Iglesias2021(), GPLineSearch()],
 #                                 ["default", "constant_conv", "kovachki_2018", "iglesias2021", "gp_linesearch"])
@@ -163,17 +181,17 @@ plot_error_convergence!(eki, pwd())
 #     visualize!(training, eki.iteration_summaries[end].ensemble_mean;
 #         field_names = [:u, :v, :b, :e],
 #         directory = dir,
-#         filename = "realizations_training.pdf"
+#         filename = "realizations_training.png"
 #     )
 #     # visualize!(validation, eki.iteration_summaries[end].ensemble_mean;
 #     #     field_names = [:u, :v, :b, :e],
 #     #     directory = dir,
-#     #     filename = "realizations_validation.pdf"
+#     #     filename = "realizations_validation.png"
 #     # )
 #     # visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
 #     #     field_names = [:u, :v, :b, :e],
 #     #     directory = dir,
-#     #     filename = "realizations_testing.pdf"
+#     #     filename = "realizations_testing.png"
 #     # )
 
 #     plot_parameter_convergence!(eki, dir)
@@ -192,7 +210,7 @@ plot_error_convergence!(eki, pwd())
 # # visualize!(training, eki.iteration_summaries[end].ensemble_mean;
 # #     field_names = [:u, :v, :b, :e],
 # #     directory,
-# #     filename = "realizations.pdf"
+# #     filename = "realizations.png"
 # # )
 
 # # ##
@@ -320,4 +338,4 @@ plot_error_convergence!(eki, pwd())
 # # # )
 # # # @show parameters
 
-# # include("emulate_sample.jl")
+include("emulate_sample.jl")

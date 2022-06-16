@@ -60,11 +60,11 @@ begin
     noise_var = diag(Γy)
     lines!(ax2, noise_var, 1:length(noise_var), color=:purple, linewidth=4)
 
-    save(joinpath(directory, "obs_and_noise_var.pdf"), f)
+    save(joinpath(directory, "obs_and_noise_var.png"), f)
 end
 
 f = CairoMakie.heatmap(Γy)
-save(joinpath(directory, "noise_cov_heatmap.pdf"), f)
+save(joinpath(directory, "noise_cov_heatmap.png"), f)
 
 
 ###
@@ -115,7 +115,7 @@ plot_error_convergence!(eki, directory)
 visualize!(calibration, eki.iteration_summaries[end].ensemble_mean;
     field_names = (:b,),
     directory = directory,
-    filename = "realizations.pdf"
+    filename = "realizations.png"
 )
 
 ###
@@ -160,7 +160,7 @@ G = load(file)["G"]
 visualize!(calibration, θglobalmin;
     field_names = (:b,),
     directory = directory,
-    filename = "realizations_θglobalmin.pdf"
+    filename = "realizations_θglobalmin.png"
 )
 
 using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
@@ -224,7 +224,7 @@ function plot_contour(eki, xc, yc, zc, name, directory; zlabel="MSE loss", title
             Legend(f[1, 2], scatters, legend_labels, position = :lb)
         end
 
-        save(joinpath(directory, "loss_contour_$(name).pdf"), f)
+        save(joinpath(directory, "loss_contour_$(name).png"), f)
     end
 
     # 3D loss landscape
@@ -241,7 +241,7 @@ function plot_contour(eki, xc, yc, zc, name, directory; zlabel="MSE loss", title
         )
 
         CairoMakie.surface!(ax1, xc, yc, zc)
-        save(joinpath(directory, "loss_landscape_$(name).pdf"), f)
+        save(joinpath(directory, "loss_landscape_$(name).png"), f)
 
         #######
         #######
@@ -286,7 +286,7 @@ function plot_contour(eki, xc, yc, zc, name, directory; zlabel="MSE loss", title
 
         # ax.contourf(xgrid, ygrid, zgrid, 10, linewidth=3, cmap="autumn_r", linestyles="solid", offset=-1)
 
-        # PyPlot.savefig(joinpath(directory, "v3_loss_landscape_$(name).pdf"))
+        # PyPlot.savefig(joinpath(directory, "v3_loss_landscape_$(name).png"))
         # PyPlot.close(fig)
 
         #######

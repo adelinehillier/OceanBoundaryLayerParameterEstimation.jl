@@ -6,16 +6,6 @@ function open_output_file(directory)
         return o
 end
 
-function writeout(o, name, loss, params)
-        param_vect = [params...]
-        loss_value = loss(params)
-        write(o, "----------- \n")
-        write(o, "$(name) \n")
-        write(o, "Parameters: $(param_vect) \n")
-        write(o, "Loss: $(loss_value) \n")
-        saveplot(params, name, loss)
-end
-
 field_guide = Dict(
     :u => (
         units = "m/s",
