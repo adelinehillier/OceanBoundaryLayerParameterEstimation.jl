@@ -7,7 +7,7 @@
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
 
 using Oceananigans
-using LinearAlgebra, Distributions, JLD2, DataDeps, Random
+using LinearAlgebra, Distributions, JLD2, DataDeps, Random, OffsetArrays
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
 using OceanBoundaryLayerParameterEstimation
@@ -20,7 +20,7 @@ Random.seed!(1234)
 
 Nz = 32
 Nensemble = 128
-architecture = GPU()
+architecture = CPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
 # prior_type = "normal"
@@ -120,9 +120,10 @@ iterations = 10
 
 function estimate_noise_covariance(data_path_fns, times)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times, Nz; architecture, transformation, field_names, fields_by_case) for dp in data_path_fns]
-    Nobs = Nz * (length(times) - 1) * sum([length(obs.forward_map_names) for obs in obsns_various_resolutions[1]])
+    representative_observations = first(obsns_various_resolutions).observations
+    Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
-    noise_covariance = noise_covariance + I(Nobs) * mean(noise_covariance)/10
+    noise_covariance = noise_covariance + 0.01 * I(Nobs) * mean(noise_covariance) # prevent zeros
     return noise_covariance  
 end
 
@@ -132,7 +133,16 @@ resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=tru
 
 pseudo_stepping = Iglesias2021()
 eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-final_params = iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
+# final_params = iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
+
+outputs = OffsetArray([], -1)
+for step = ProgressBar(1:iterations)
+    pseudo_step!(eki; pseudo_stepping)
+    push!(outputs, deepcopy(eki.forward_map_output))
+end
+
+final_params = eki.iteration_summaries[end].parameters
+
 visualize!(training, final_params;
     field_names = [:u, :v, :b, :e],
     directory,

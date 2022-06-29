@@ -12,77 +12,30 @@ using ParameterEstimocean.Parameters: transform_to_constrained
 dir = joinpath(directory, "emulate_sample_forward_map")
 isdir(dir) || mkdir(dir)
 
-"""
-    truncate_forward_map_to_length_k_uncorrelated_points(k) 
+include("emulate_sample_utils.jl")
 
-# Arguments
-- G: d × M array whose M columns are individual forward map outputs ∈ Rᵈ.
-- k: The number of dimensions to reduce the forward map outputs to.
-# Returns
-- Ĝ: k × M array whose M columns are individual forward map outputs in an 
-uncorrelated output space Rᵏ computed by PCA analysis using SVD as described
-in Appendix A.2. of Cleary et al. "Calibrate Emulate Sample" (2021).
-"""
-function truncate_forward_map_to_length_k_uncorrelated_points(G, y, k)
-
-    d, M = size(G)
-    m = mean(G, dims=2) # d × 1
-
-    # Center the columns of G at zero
-    Gᵀ_centered = (G .- m)'
-
-    # SVD
-    # Gᵀ = Ĝᵀ Σ Vᵀ
-    # (M × d) = (M × d)(d × d)(d × d)    
-    F = svd(Gᵀ_centered; full=false)
-    Ĝᵀ = F.U
-    Σ = Diagonal(F.S)
-    Vᵀ = F.Vt
-
-    @assert Gᵀ_centered ≈ Ĝᵀ * Σ * Vᵀ
-    @show size(Gᵀ_centered), M, d
-    @show size(Ĝᵀ), M, d
-    @show size(Σ), d, d
-    @show size(Vᵀ), d, d
-
-    # Eigenvalue sum
-    total_eigenval = sum(Σ .^ 2)
-
-    # Keep only the `k` < d most important dimensions
-    # corresponding to the `k` highest singular values.
-    # Dimensions become (M × d) = (M × k)(k × k)(k × d)
-    Ĝᵀ = Ĝᵀ[:, 1:k] 
-    Σ = Σ[1:k, 1:k]
-    Vᵀ = Vᵀ[1:k, :]
-
-    @info "Preserved $(sum(Σ .^ 2)*100/total_eigenval)% of the original variance in the output data by 
-           reducing the dimensionality of the output space from $d to $k."
-
-    Ĝ = Ĝᵀ'
-    #      Ĝᵀ = (Gᵀ - mᵀ) V Σ⁻¹
-    # (M × k) = (M × d)(d × k)(k × k)
-    # Therefore
-    #       Ĝ = Σ⁻¹ Vᵀ (G - m)
-    # (k × M) = (k × k)(k × d)(d × M)
-    #
-    # Therefore to transform the observations,
-    # ŷ = Σ⁻¹ Vᵀ (y - m)
-    ŷ = (1 ./ Σ) * Vᵀ * (y - m)
-    return Ĝ, ŷ
-end
-
-# First, conglomerate all samples generated thus far by EKI.
-# This will be the training data for the GP emulator.
-# We will filter out all failed particles.
+# First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
+# iteration `n` by EKI. This will be the training data for 
+# the GP emulator. We will filter out all failed particles.
 n = 5
-# n = eki.iteration
+N = eki.iteration
 
-# X = hcat([constrained_ensemble_array(eki, i) for i in 0:n]...) # constrained
+# Reserve `Nvalidation` samples for validation.
+Nvalidation = 20
+
+Xfull = hcat([ensemble_array(eki, iter) for iter in 0:(N-1)]...) # unconstrained
+Gfull = hcat(outputs[0:(N-1)]...)
+
 X = hcat([ensemble_array(eki, iter) for iter in 0:n]...) # unconstrained
-# G = hcat(getproperty.(eki.iteration_summaries, :forward_map_output)...)
-@info "Performing emulation based on samples from the first $n iterations of EKI."
-G = hcat([summary.forward_map_output for summary in eki.iteration_summaries[0:5]]...)
+G = hcat(outputs[0:n]...)
+# G = hcat([sum.(eki.iteration_summaries[i].G) for i in 0:n]...)
 
+objective_values = [sum(eki_objective(eki, Xfull[:, j], Gfull[:, j]; constrained=false)) for j in 1:size(Xfull, 2)]
+min_loss = minimum(objective_values)
+
+@info "Performing emulation based on samples $(size(X) - Nvalidation) samples from the first $n iterations of EKI."
+
+# Filter out all failed particles, if any
 nan_values = vec(mapslices(any, isnan.(G); dims=1)) # bitvector
 not_nan_indices = findall(.!nan_values) # indices of columns (particles) with no `NaN`s
 X = X[:, not_nan_indices]
@@ -108,19 +61,21 @@ cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
 ###
 
 # The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
-# The MCMC sampler takes in a function `nll` which maps θ to the negative log value Φ(θ). 
+# The MCMC sampler takes in a function `nll` which maps θ to the negative log likelihood value Φ(θ). 
 # In the following example, we use a GP to emulate the forward map output G. 
 
 # We will take advantage of the parallelizability of our forward map
 # by running parallel chains of MCMC.
-n_chains = 128
+# n_chains = 128
+n_chains = 16
 
-# Length and burn-in length per chain
+# Length and burn-in length per chain for sampling the true forward map
 chain_length = 1000
-burn_in = 100
+burn_in = 0
 
-chain_length_emulate = 10000
-burn_in_emulate = 1000
+# Length and burn-in length per chain for sampling the emulated forward map
+chain_length_emulate = 1000
+burn_in_emulate = 0
 
 ###
 ### Sample from emulated loss landscape using parallel chains of MCMC
@@ -138,11 +93,13 @@ for i in ProgressBar(1:k) # forward map index
     yᵢ = Ĝ[i, :]
 
     # Reserve `validation_fraction` representative samples for the emulator
-    # We will sort `yᵢ` and take evenly spaced samples so the samples are representative.
+    # We will sort `yᵢ` and take evenly spaced samples between the upper and
+    # lower quartiles so that the samples are representative.
     M = length(yᵢ)
     lq = Int(round(M/4))
     uq = lq*3
-    evenly_spaced_samples = Int.(round.(range(lq, uq, length = Int(round(0.03M)))))
+    decimal_indices = range(lq, uq, length = Nvalidation)
+    evenly_spaced_samples = Int.(round.(decimal_indices))
     emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
     not_emulator_validation_indices = [i for i in 1:M if !(i in emulator_validation_indices)]
     X_validation = X[:, emulator_validation_indices]
@@ -160,7 +117,7 @@ N_axes = k
 n_rows = Int(ceil(N_axes / n_columns))
 fig = Figure(resolution = (300n_columns, 350n_rows), fontsize = 8)
 ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
-for (forward_map_index, result) in enumerate(validation_results)
+for (i, result) in enumerate(validation_results)
 
     yᵢ_validation, ŷᵢ_validation, Γgp_validation = result
     r = round(Statistics.cor(yᵢ_validation, ŷᵢ_validation); sigdigits=2)
@@ -184,9 +141,6 @@ function nll_emulator(θ_vector)
     μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
     Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
 
-    # @show size(μ_gps)
-    # @show size(Γ_gps)
-
     inv_sqrt_Γθ = eki.precomputed_arrays[:inv_sqrt_Γθ]
     μθ = eki.precomputed_arrays[:μθ]
     Γŷ = 0 # assume that Γŷ is negligible compared to Γgp
@@ -197,7 +151,7 @@ function nll_emulator(θ_vector)
         Ggp = μ_gps[i, :] # length-k vector
         Γgp = diagm(Γ_gps[i, i, :])
 
-        θ_unconstrained = copy(θ)
+        θ_unconstrained = copy(θ[:,:])
         inverse_normalize!(θ_unconstrained, zscore_X)
         # Φ₁ = (1/2)*|| (Γgp + Γŷ)^(-½) * (ŷ - Ggp) ||²
         Φ₁ = (1/2) * norm(inv(sqrt(Γgp .+ Γŷ)) * (ŷ .- Ggp))^2
@@ -208,7 +162,7 @@ function nll_emulator(θ_vector)
         push!(Φs, Φ₁ + Φ₂ + Φ₃)
     end
 
-    return Φs
+    return Φs ./ min_loss
 end
 
 C = Matrix(Hermitian(cov_θθ_all_iters))
@@ -257,7 +211,7 @@ function nll_true(θ)
     # @show length(objective_values)
     # @show findall(x -> isfinite(x), objective_values)
 
-    return objective_values
+    return objective_values ./ min_loss
 end
 
 chain_X, chain_nll = markov_chain(nll_true, proposal, seed_X, chain_length; burn_in, n_chains)
@@ -278,7 +232,7 @@ save(file, Dict("unscaled_chain_X" => unscaled_chain_X,
 
 begin 
     n_columns = 3
-    hist_fig, hist_axes = plot_mcmc_densities2(unscaled_chain_X_emulated, parameter_set.names; 
+    hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_hist.png",
@@ -290,7 +244,7 @@ begin
     #         linecolor = :blue, background_color = (:blue, 0.2))
     # color = Makie.LinePattern(; background_color = (:blue, 0.2))
 
-    density_fig, density_axes = plot_mcmc_densities2(unscaled_chain_X_emulated, parameter_set.names; 
+    density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_density_textured.png",
@@ -299,7 +253,7 @@ begin
                                     color = (:blue, 0.8),
                                     type = "density")
 
-    plot_mcmc_densities2!(hist_fig, hist_axes, unscaled_chain_X, parameter_set.names; 
+    plot_mcmc_densities!(hist_fig, hist_axes, unscaled_chain_X, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_hist.png",
@@ -307,7 +261,7 @@ begin
                                     color = (:orange, 0.5),
                                     type = "hist")
 
-    plot_mcmc_densities2!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
+    plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_density_textured.png",
@@ -318,6 +272,7 @@ begin
                                     type = "density")
 end
 
+Nparam = length(parameter_set.names)
 
 begin
     xticks=(collect(1:Nparam), string.(collect(parameter_set.names)))

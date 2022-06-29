@@ -7,7 +7,7 @@
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
 
 using Oceananigans
-using LinearAlgebra, Distributions, JLD2, DataDeps, Random
+using LinearAlgebra, Distributions, JLD2, DataDeps, Random, OffsetArrays, ProgressBars
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
 using OceanBoundaryLayerParameterEstimation
@@ -19,23 +19,13 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 Random.seed!(1234)
 
 Nz = 32
-Nensemble = 128
-architecture = GPU()
-# prior_type = "scaled_logit_normal"
-prior_type = "normal"
+# Nensemble = 128 
+Nensemble = 16
+architecture = CPU()
+prior_type = "scaled_logit_normal"
+# prior_type = "normal"
 
-path = joinpath(directory, "results.txt")
-o = open_output_file(path)
-write(o, "Training relative weights: $(calibration.relative_weights) \n")
-write(o, "Validation relative weights: $(validation.relative_weights) \n")
-write(o, "Training default parameters: $(validation.default_parameters) \n")
-write(o, "Validation default parameters: $(validation.default_parameters) \n")
-
-write(o, "------------ \n \n")
-default_parameters = calibration.default_parameters
-train_loss_default = calibration(default_parameters)
-valid_loss_default = validation(default_parameters)
-write(o, "Default parameters: $(default_parameters) \nLoss on training: $(train_loss_default) \nLoss on validation: $(valid_loss_default) \n------------ \n \n")
+directory = pwd()
 
 #####
 ##### Set up ensemble model
@@ -132,12 +122,18 @@ end
 # noise_covariance = estimate_noise_covariance(training_times)
 
 noise_covariance = 1e-2
-
+iterations = 10
 resampler = Resampler(acceptable_failure_fraction=0.5, only_failed_particles=true)
 
 pseudo_stepping = Iglesias2021()
 eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
+
+outputs = OffsetArray([], -1)
+for step = ProgressBar(1:iterations)
+    pseudo_step!(eki; pseudo_stepping)
+    push!(outputs, deepcopy(eki.forward_map_output))
+end
+
 visualize!(training, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],
     directory = pwd(),
@@ -156,6 +152,24 @@ visualize!(testing, eki.iteration_summaries[end].ensemble_mean;
 
 plot_parameter_convergence!(eki, pwd())
 plot_error_convergence!(eki, pwd())
+
+# ###
+# ### Save results
+# ###
+
+# path = joinpath(directory, "results.txt")
+# o = open_output_file(path)
+# write(o, "Training relative weights: $(training.relative_weights) \n")
+# write(o, "Validation relative weights: $(validation.relative_weights) \n")
+# write(o, "Training default parameters: $(validation.default_parameters) \n")
+# write(o, "Validation default parameters: $(validation.default_parameters) \n")
+
+# write(o, "------------ \n \n")
+# default_parameters = training.default_parameters
+# train_loss_default = calibration(default_parameters)
+# valid_loss_default = validation(default_parameters)
+# write(o, "Default parameters: $(default_parameters) \nLoss on training: $(train_loss_default) \nLoss on validation: $(valid_loss_default) \n------------ \n \n")
+
 
 # eki = EnsembleKalmanInversion(training; noise_covariance=1e-2, pseudo_stepping, resampler, tikhonov = true)
 # iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
@@ -199,143 +213,143 @@ plot_error_convergence!(eki, pwd())
 #     plot_error_convergence!(eki, dir)
 # end
 
-# # ###
-# # ### Summary Plots
-# # ###
+###
+### Summary Plots
+###
 
-# # plot_parameter_convergence!(eki, directory)
-# # plot_pairwise_ensembles!(eki, directory)
-# # plot_error_convergence!(eki, directory)
+plot_parameter_convergence!(eki, directory)
+plot_pairwise_ensembles!(eki, directory)
+plot_error_convergence!(eki, directory)
 
-# # visualize!(training, eki.iteration_summaries[end].ensemble_mean;
-# #     field_names = [:u, :v, :b, :e],
-# #     directory,
-# #     filename = "realizations.png"
-# # )
+visualize!(training, eki.iteration_summaries[end].ensemble_mean;
+    field_names = [:u, :v, :b, :e],
+    directory,
+    filename = "realizations.png"
+)
 
-# # ##
-# # ##
-# # ##
-# # ##
+##
+##
+##
+##
 
-# # validation_noise_covariance = estimate_noise_covariance(validation_times)
-# # function validation_loss_final(pseudo_stepping)
-# #     eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
-# #     θ_end = iterate!(eki; iterations, pseudo_stepping)
-# #     θ_end = collect(θ_end)
+validation_noise_covariance = estimate_noise_covariance(validation_times)
+function validation_loss_final(pseudo_stepping)
+    eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler)
+    θ_end = iterate!(eki; iterations, pseudo_stepping)
+    θ_end = collect(θ_end)
 
-# #     eki_validation = EnsembleKalmanInversion(validation; noise_covariance = validation_noise_covariance, pseudo_stepping, resampler)
-# #     G_end_validation = forward_map(validation, θ_end)[:, 1]
+    eki_validation = EnsembleKalmanInversion(validation; noise_covariance = validation_noise_covariance, pseudo_stepping, resampler)
+    G_end_validation = forward_map(validation, θ_end)[:, 1]
 
-# #     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-# #     # objective_values = [eki_objective(eki_validation, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
-# #     # validation_loss_per_iteration = sum.(objective_values)
+    # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
+    # objective_values = [eki_objective(eki_validation, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
+    # validation_loss_per_iteration = sum.(objective_values)
 
-# #     loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; 
-# #                                                 constrained=true))
+    loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; 
+                                                constrained=false))
 
-# #     return loss_final
-# # end
+    return loss_final
+end
 
-# # # function testing_loss_trajectory(pseudo_stepping)
-# # #     eki_testing = EnsembleKalmanInversion(testing; noise_covariance, pseudo_stepping, resampler)
-# # #     G_end_testing = forward_map(testing, θ_end)
+# function testing_loss_trajectory(pseudo_stepping)
+#     eki_testing = EnsembleKalmanInversion(testing; noise_covariance, pseudo_stepping, resampler)
+#     G_end_testing = forward_map(testing, θ_end)
 
-# # #     # Run EKI to train
+#     # Run EKI to train
 
-# # #     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-# # #     objective_values = [eki_objective(eki_testing, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
-# # #     testing_loss_per_iteration = sum.(objective_values)
-# # # end
+#     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
+#     objective_values = [eki_objective(eki_testing, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
+#     testing_loss_per_iteration = sum.(objective_values)
+# end
 
-# # optim_iterations = 10
+# optim_iterations = 10
 
-# # using Optim
-# # using Optim: minimizer
+# using Optim
+# using Optim: minimizer
 
-# # frobenius_norm(A) = sqrt(sum(A .^ 2))
+# frobenius_norm(A) = sqrt(sum(A .^ 2))
 
-# # using ParameterEstimocean.PseudoSteppingSchemes: observations, obs_noise_covariance, inv_obs_noise_covariance
-# # function kovachki_2018_update2(Xₙ, Gₙ, eki; Δtₙ=1.0)
+# using ParameterEstimocean.PseudoSteppingSchemes: observations, obs_noise_covariance, inv_obs_noise_covariance
+# function kovachki_2018_update2(Xₙ, Gₙ, eki; Δtₙ=1.0)
 
-# #     y = observations(eki)
-# #     Γy = obs_noise_covariance(eki)
+#     y = observations(eki)
+#     Γy = obs_noise_covariance(eki)
 
-# #     N_ens = size(Xₙ, 2)
-# #     g̅ = mean(G, dims = 2)
-# #     Γy⁻¹ = inv_obs_noise_covariance(eki)
+#     N_ens = size(Xₙ, 2)
+#     g̅ = mean(G, dims = 2)
+#     Γy⁻¹ = inv_obs_noise_covariance(eki)
 
-# #     # Fill transformation matrix (D(uₙ))ᵢⱼ = ⟨ G(u⁽ⁱ⁾) - g̅, Γy⁻¹(G(u⁽ʲ⁾) - y) ⟩
-# #     D = zeros(N_ens, N_ens)
-# #     for j = 1:N_ens, i = 1:N_ens
-# #         D[i, j] = dot(Gₙ[:, j] - g̅, Γy⁻¹ * (Gₙ[:, i] - y))
-# #     end
+#     # Fill transformation matrix (D(uₙ))ᵢⱼ = ⟨ G(u⁽ⁱ⁾) - g̅, Γy⁻¹(G(u⁽ʲ⁾) - y) ⟩
+#     D = zeros(N_ens, N_ens)
+#     for j = 1:N_ens, i = 1:N_ens
+#         D[i, j] = dot(Gₙ[:, j] - g̅, Γy⁻¹ * (Gₙ[:, i] - y))
+#     end
 
-# #     # Update
-# #     Xₙ₊₁ = Xₙ - Δtₙ * Xₙ * D
+#     # Update
+#     Xₙ₊₁ = Xₙ - Δtₙ * Xₙ * D
 
-# #     return Xₙ₊₁
-# # end
+#     return Xₙ₊₁
+# end
 
-# # ##
-# # ## Make sure kovachki_2018 agrees with iglesias_2013
-# # ##
+##
+## Make sure kovachki_2018 agrees with iglesias_2013
+##
 
-# # # using ParameterEstimocean.PseudoSteppingSchemes: iglesias_2013_update, kovachki_2018_update
-# # # Gⁿ = eki.forward_map_output
-# # # Xⁿ = eki.unconstrained_parameters
+# using ParameterEstimocean.PseudoSteppingSchemes: iglesias_2013_update, kovachki_2018_update
+# Gⁿ = eki.forward_map_output
+# Xⁿ = eki.unconstrained_parameters
 
-# # # r = iglesias_2013_update(Xⁿ, Gⁿ, eki; Δtₙ=1.0)
-# # # t = kovachki_2018_update2(Xⁿ, Gⁿ, eki; Δtₙ=1.0)
+# r = iglesias_2013_update(Xⁿ, Gⁿ, eki; Δtₙ=1.0)
+# t = kovachki_2018_update2(Xⁿ, Gⁿ, eki; Δtₙ=1.0)
 
-# # # f(x) = (x-0.5)^2
-# # # result2 = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true, extended_trace=true)
+# f(x) = (x-0.5)^2
+# result2 = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true, extended_trace=true)
 
-# # f(step_size) = validation_loss_final(Constant(; step_size))
-# # # result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = minimizer(result)
+# f(step_size) = validation_loss_final(Constant(; step_size))
+# result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = minimizer(result)
 
-# # f_log(step_size) = validation_loss_final(Constant(; step_size = 10^(step_size)))
-# # # result = optimize(f_log, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = 10^(minimizer(result))
-# # # @show Optim.x_trace(result)
-# # # @show 10 .^ (Optim.x_trace(result))
-# # # @show Optim.f_trace(result)
+# f_log(step_size) = validation_loss_final(Constant(; step_size = 10^(step_size)))
+# result = optimize(f_log, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = 10^(minimizer(result))
+# @show Optim.x_trace(result)
+# @show 10 .^ (Optim.x_trace(result))
+# @show Optim.f_trace(result)
 
-# # # a = [f_log(step_size) for step_size = -3.0:0.5:0.0]
-# # # b = [f(step_size) for step_size = 0.1:0.1:1.0]
+# a = [f_log(step_size) for step_size = -3.0:0.5:0.0]
+# b = [f(step_size) for step_size = 0.1:0.1:1.0]
 
-# # # using CairoMakie
-# # # fig = Figure()
-# # # lines(fig[1,1], collect(-3.0:0.5:0.0), a)
-# # # lines(fig[1,2], collect(0.1:0.1:1.0), b)
-# # # save(joinpath(directory, "1d_loss_landscape.png"), fig)
+# using CairoMakie
+# fig = Figure()
+# lines(fig[1,1], collect(-3.0:0.5:0.0), a)
+# lines(fig[1,2], collect(0.1:0.1:1.0), b)
+# save(joinpath(directory, "1d_loss_landscape.png"), fig)
 
-# # # f(convergence_ratio) = validation_loss_final(ConstantConvergence(; convergence_ratio))
-# # # result = optimize(f, 0.1, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = minimizer(result)
+# f(convergence_ratio) = validation_loss_final(ConstantConvergence(; convergence_ratio))
+# result = optimize(f, 0.1, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = minimizer(result)
 
-# # # f(initial_step_size) = validation_loss_final(Kovachki2018(; initial_step_size))
-# # # result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = minimizer(result)
+# f(initial_step_size) = validation_loss_final(Kovachki2018(; initial_step_size))
+# result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = minimizer(result)
 
-# # # f(cov_threshold) = validation_loss_final(Default(; cov_threshold = 10^(cov_threshold)))
-# # # result = optimize(f, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = 10 .^ (minimizer(result))
+# f(cov_threshold) = validation_loss_final(Default(; cov_threshold = 10^(cov_threshold)))
+# result = optimize(f, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = 10 .^ (minimizer(result))
 
-# # # f(learning_rate) = validation_loss_final(GPLineSearch(; learning_rate = 10^(learning_rate)))
-# # # result = optimize(f, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-# # # p = 10 .^ (minimizer(result))
+# f(learning_rate) = validation_loss_final(GPLineSearch(; learning_rate = 10^(learning_rate)))
+# result = optimize(f, -3, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
+# p = 10 .^ (minimizer(result))
 
-# # # pseudo_stepping = Constant(; step_size=1.0)
-# # # # using StatProfilerHTML
-# # # # @profilehtml parameters = iterate!(eki; iterations)
-# # # @time parameters = iterate!(eki; iterations, pseudo_stepping)
-# # # visualize!(training, parameters;
-# # #     field_names = [:u, :v, :b, :e],
-# # #     directory,
-# # #     filename = "perfect_model_visual_calibrated.png"
-# # # )
-# # # @show parameters
+# pseudo_stepping = Constant(; step_size=1.0)
+# # using StatProfilerHTML
+# # @profilehtml parameters = iterate!(eki; iterations)
+# @time parameters = iterate!(eki; iterations, pseudo_stepping)
+# visualize!(training, parameters;
+#     field_names = [:u, :v, :b, :e],
+#     directory,
+#     filename = "perfect_model_visual_calibrated.png"
+# )
+# @show parameters
 
-include("emulate_sample.jl")
+include("emulate_sample_forward_map.jl")
