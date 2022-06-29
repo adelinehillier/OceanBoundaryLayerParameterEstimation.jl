@@ -1,4 +1,4 @@
-using ParameterEstimocean.InverseProblems: vectorize, forward_run!, transpose_model_output
+using ParameterEstimocean.InverseProblems: forward_run!, transpose_model_output
 using Oceananigans.Architectures: arch_array
 using CairoMakie
 using LaTeXStrings
@@ -29,13 +29,16 @@ function visualize!(ip::InverseProblem, parameters;
 
     n_fields = length(field_names)
 
-    observations = vectorize(ip.observations)
+    observations = ip.observations
+
+    observations = observations isa BatchedSyntheticObservations ? 
+                    observations : BatchedSyntheticObservations(observations)
 
     forward_run!(ip, parameters)
 
     # Vector of SyntheticObservations objects, one for each observation
-    predictions = transpose_model_output(ip.time_series_collector, observations)
-        
+    predictions = transpose_model_output(ip.time_series_collector, ip.observations)
+
     fig = Figure(resolution = (200*(length(field_names)+1), 200*(length(ip.observations)+1)), font = "CMU Serif")
     colors = [:black, :red, :blue]
 
@@ -45,7 +48,7 @@ function visualize!(ip::InverseProblem, parameters;
         hidespines!(ax, :t, :b, :l, :r)
     end
 
-    for (oi, observation) in enumerate(observations)
+    for (oi, observation) in enumerate(observations.observations)
 
         i = oi + 1
         prediction = predictions[oi]
@@ -68,7 +71,7 @@ function visualize!(ip::InverseProblem, parameters;
 
             middle = j > 1 && j < n_fields
             remove_spines = j == 1 ? (:t, :r) : j == n_fields ? (:t, :l) : (:t, :l, :r)
-            axis_args = j == n_fields ? (ylabelposition=:right, yaxisposition=:right) : NamedTuple()
+            axis_args = j == n_fields ? (yaxisposition=:right, ) : NamedTuple()
 
             if j == 1 || j == n_fields
                 axis_args = merge(axis_args, (ylabel="z (m)",))

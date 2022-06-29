@@ -42,7 +42,7 @@ function validation_loss_final(pseudo_stepping)
     # objective_values = [eki_objective(eki_validation, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
     # validation_loss_per_iteration = sum.(objective_values)
 
-    loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; constrained=true))
+    loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; constrained=false))
 
     return loss_final
 end
@@ -57,7 +57,7 @@ function testing_loss_trajectory(pseudo_stepping)
     iterate!(eki_testing; iterations, show_progress=false, pseudo_stepping)
 
     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-    objective_values = [eki_objective(eki_testing, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
+    objective_values = [eki_objective(eki_testing, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=false) for j in 1:size(G, 2)]
     testing_loss_per_iteration = sum.(objective_values)
 end
 

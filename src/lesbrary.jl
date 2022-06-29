@@ -29,7 +29,7 @@ function SyntheticObservationsBatch(path_fn, times, Nz; transformation=transform
       push!(observations, observation)
    end
 
-   return observations
+   return BatchedSyntheticObservations(observations)
 end
 
 # Nz = 256
@@ -75,7 +75,8 @@ function lesbrary_ensemble_simulation(observations;
     Qᵇ = simulation.model.tracers.b.boundary_conditions.top.condition
     N² = simulation.model.tracers.b.boundary_conditions.bottom.condition
 
-    for (case, obs) in enumerate(observations)
+    for case in 1:length(observations)
+      obs = observations[case]
       try 
          f = obs.metadata.parameters.coriolis_parameter
          view(Qᵘ, :, case) .= obs.metadata.parameters.momentum_flux
@@ -94,10 +95,14 @@ function lesbrary_ensemble_simulation(observations;
     return simulation
 end
 
-function estimate_η_covariance(output_map, observations)
+"""
+   estimate_η_covariance(output_map, observations)
+
+"""
+function estimate_η_covariance(output_map, observations::Vector{<:BatchedSyntheticObservations})
 
    @assert length(observations) > 2 "A two-sample covariance matrix has rank one and is therefore singular. 
-                                      Please increase the number of `observations` to at least 3."
+                                                   Please increase the number of `observations` to at least 3."
    obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
    return cov(transpose(obs_maps), corrected=false)
 end
