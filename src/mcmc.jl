@@ -1,6 +1,6 @@
 # Credit to https://github.com/bischtob/SEC/blob/main/src/Sample/mcmc.jl
 
-using Distributions
+using Distributions, ProgressBars
 import Distributions: Uniform
 
 """
@@ -96,7 +96,7 @@ function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_cha
     push!(chain_X, current_X)
     push!(chain_nll, current_nll)
 
-    for i = 1:chain_length-1
+    for i = ProgressBar(1:chain_length-1)
         for chain in n_chains
             proposal_X, proposal_nll = proposal_X_nll(nll, proposal, current_X, current_nll)
             new_X, new_nll = markov_link(proposal_X, proposal_nll, current_X, current_nll)
