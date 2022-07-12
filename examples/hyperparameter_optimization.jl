@@ -1,21 +1,4 @@
-# for (pseudo_scheme, name) in zip([Default(cov_threshold=0.01), ConstantConvergence(convergence_ratio=0.7), Kovachki2018InitialConvergenceThreshold(), Iglesias2021(), GPLineSearch()],
-#                                 ["default", "constant_conv", "kovachki_2018", "iglesias2021", "gp_linesearch"])
-
-#     @show name
-#     eki = EnsembleKalmanInversion(training; noise_covariance, resampler, tikhonov = true)
-#     iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping = pseudo_scheme)
-
-#     dir = directory * "_" * name
-#     visualize!(training, eki.iteration_summaries[end].ensemble_mean;
-#         field_names = [:u, :v, :b, :e],
-#         directory = dir,
-#         filename = "realizations_training.png"
-#     )
-
-#     plot_parameter_convergence!(eki, dir)
-#     plot_pairwise_ensembles!(eki, dir)
-#     plot_error_convergence!(eki, dir)
-# end
+using CairoMakie
 
 ##
 ## Systematic hyperparameter Optimization
@@ -24,108 +7,169 @@
 # (Quality of the covariance matrix, stability of convergence, etc.)
 
 # directory to which to save the files generated in this script
-
-# directory to which to save the files generated in this script
 dir = joinpath(directory, "hyperparameter_optimization")
+isdir(dir) || mkdir(dir)
 
-validation_noise_covariance = estimate_noise_covariance([two_day_suite_path_1m, two_day_suite_path_2m, two_day_suite_path_4m], validation_times)
+# validation_noise_covariance = estimate_noise_covariance([two_day_suite_path_1m, two_day_suite_path_2m, two_day_suite_path_4m], validation_times)
 function validation_loss_final(pseudo_stepping)
     @show pseudo_stepping
-    eki = EnsembleKalmanInversion(validation; noise_covariance=validation_noise_covariance, pseudo_stepping, resampler, tikhonov = true)
+
+    eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping, resampler, tikhonov = true)
     θ_end = iterate!(eki; iterations, pseudo_stepping)
     θ_end = collect(θ_end)
 
-    eki_validation = EnsembleKalmanInversion(validation; noise_covariance = validation_noise_covariance, pseudo_stepping, resampler)
+    eki_validation = EnsembleKalmanInversion(validation; noise_covariance = validation_noise_covariance, pseudo_stepping, resampler, tikhonov = true)
     G_end_validation = forward_map(validation, θ_end)[:, 1]
 
     # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-    # objective_values = [eki_objective(eki_validation, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
+    # objective_values = initial_convergence_ratio_validation, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=true) for j in 1:size(G, 2)]
     # validation_loss_per_iteration = sum.(objective_values)
 
-    loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; constrained=false))
+    loss_final = sum(eki_objective(eki_validation, θ_end, G_end_validation; constrained=true))
 
     return loss_final
 end
 
-testing_noise_covariance = estimate_noise_covariance([six_day_suite_path_1m, six_day_suite_path_2m, six_day_suite_path_4m], testing_times)
+# testing_noise_covariance = estimate_noise_covariance([six_day_suite_path_1m, six_day_suite_path_2m, six_day_suite_path_4m], testing_times)
 function testing_loss_trajectory(pseudo_stepping)
     @show pseudo_stepping
+
+    eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping, resampler, tikhonov = true)
     eki_testing = EnsembleKalmanInversion(testing; noise_covariance = testing_noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-    G_end_testing = forward_map(testing, θ_end)[:, 1]
 
-    # Run EKI to train on testing
-    iterate!(eki_testing; iterations, show_progress=false, pseudo_stepping)
+    # Train on training dataset
+    iterate!(eki; iterations, show_progress=false, pseudo_stepping)
+    time_step_trajectory = [eki.iteration_summaries[i].pseudo_Δt for i=0:iterations]
 
-    # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-    objective_values = [eki_objective(eki_testing, θ[j], G[:, j]; inv_sqrt_Γθ, constrained=false) for j in 1:size(G, 2)]
-    testing_loss_per_iteration = sum.(objective_values)
+    # Retrieve ensemble mean and corresponding outputs for all iterations
+    θ_per_iter = [eki.iteration_summaries[i].ensemble_mean for i=0:iterations] # training
+    G_per_iter = forward_map(testing, θ_per_iter)[:, 1:length(θ_per_iter)] # testing
+
+    testing_loss_per_iteration = [sum(eki_objective(eki_testing, collect(θ_per_iter[j]), G_per_iter[:, j]; constrained=true)) for j in 1:size(G_per_iter, 2)]
+
+    return testing_loss_per_iteration, time_step_trajectory
 end
 
 optim_iterations = 3
 
-using Optim
-using Optim: minimizer
+function save_summary_plots!(θ_optimal, sub_dir)
 
-f(step_size) = validation_loss_final(Constant(; step_size))
-# result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
-# p = minimizer(result)
-
-f_log(step_size) = validation_loss_final(Constant(; step_size = 10^(step_size)))
-result = optimize(f_log, -20, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-p = 10^(minimizer(result))
-@show Optim.x_trace(result)
-@show 10 .^ (Optim.x_trace(result))
-@show Optim.f_trace(result)
-
-# Optim.x_trace(result) = [-12.360679774997898, -7.639320225002105, -7.639320225002105, -6.676234249945825]
-# 10 .^ Optim.x_trace(result) = [4.358331147440399e-13, 2.2944562176907626e-8, 2.2944562176907626e-8, 2.107491103845901e-7]
-# Optim.f_trace(result) = [8.716641643832746e8, 9.820475946621203e7, 9.820475946621203e7, 6.842091255974916e7]
-
-a = [f_log(step_size) for step_size = -20.0:1.0:0.0]
-b = [f(step_size) for step_size = 0.1:0.1:1.0]
-
-using CairoMakie
-fig = Figure()
-lines(fig[1,1], collect(-20.0:1.0:0.0), a)
-lines(fig[1,2], collect(0.1:0.1:1.0), b)
-save(joinpath(directory, "1d_loss_landscape.png"), fig)
-p = minimizer(result)
-
-# f(initial_step_size) = validation_loss_final(Kovachki2018(; initial_step_size))
-# result = optimize(f, 1e-10, 1.0, Brent(); iterations=optim_iterations, store_trace=true)
-# p = minimizer(result)
-
-@info "Optimizing hyperparameter for Kovachki2018InitialConvergenceThreshold"
-begin
-    f(initial_convergence_threshold) = validation_loss_final(Kovachki2018InitialConvergenceThreshold(; initial_convergence_threshold))
-    result = optimize(f, 0.1, 0.9, Brent(); iterations=optim_iterations, store_trace=true)
-    p = minimizer(result)
-
-    fig = Figure()
-    ax = Axis(fig[1,1]; xlabel="log(initial_convergence_threshold)", ylabel="validation error at final EKI iteration")
-    scatter!(ax, collect(0.05:0.05:0.95), a = [f(step_size) for step_size = 0.05:0.05:0.95]; color=:blue)
-    scatter!(ax, 10 .^ (Optim.x_trace(result)), Optim.f_trace(result); color=:red)
-    save(joinpath(directory, "hyperparameter_1d_loss_landscape.png"), fig)
-    p = minimizer(result)
+    visualize!(training, θ_end;
+        field_names = [:u, :v, :b],
+        directory = sub_dir,
+        filename = "realizations_training.png"
+    )
+    visualize!(validation, θ_end;
+        field_names = [:u, :v, :b],
+        directory = sub_dir,
+        filename = "realizations_validation.png"
+    )
+    visualize!(testing, θ_end;
+        field_names = [:u, :v, :b],
+        directory = sub_dir,
+        filename = "realizations_testing.png"
+    )
+    plot_parameter_convergence!(eki, sub_dir)
+    plot_pairwise_ensembles!(eki, sub_dir)
+    plot_error_convergence!(eki, sub_dir)
 end
 
-Kovachki2018InitialConvergenceThreshold(; initial_convergence_threshold = )
+@info "No hyperparameters to optimize for Iglesias2021"
+pseudo_stepping_iglesias2021 = Iglesias2021()
+sub_dir = joinpath(dir, "Iglesias2021")
+eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping=pseudo_stepping_iglesias2021, resampler, tikhonov = true)
+θ_end = iterate!(eki; iterations, pseudo_stepping=pseudo_stepping_iglesias2021)
+save_summary_plots!(θ_end, sub_dir)
 
-# f(cov_threshold) = validation_loss_final(Default(; cov_threshold = 10^(cov_threshold)))
-# result = optimize(f, -20.0, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-# p = 10 .^ (minimizer(result))
+@info "Optimizing hyperparameter for ConstantConvergence"
+begin
+    f(convergence_ratio) = validation_loss_final(ConstantConvergence(; convergence_ratio))
+    # result = optimize(f, 0.1, 0.9, Brent(); iterations=optim_iterations, store_trace=true)
+    # p = minimizer(result)
+    xrange = collect(0.05:0.05:0.95)
+    ys = f.(xrange)
 
-# f(learning_rate) = validation_loss_final(GPLineSearch(; learning_rate = 10^(learning_rate)))
-# result = optimize(f, -20.0, 0.0, Brent(); iterations=optim_iterations, store_trace=true)
-# p = 10 .^ (minimizer(result))
+    sub_dir = joinpath(dir, "ConstantConvergence")
 
-# pseudo_stepping = Constant(; step_size=1.0)
-# # using StatProfilerHTML
-# # @profilehtml parameters = iterate!(eki; iterations)
-# @time parameters = iterate!(eki; iterations, pseudo_stepping)
-# visualize!(training, parameters;
-#     field_names = [:u, :v, :b, :e],
-#     directory,
-#     filename = "perfect_model_visual_calibrated.png"
-# )
-# @show parameters
+    fig = Figure(fontsize=24)
+    ax = Axis(fig[1,1]; xlabel="convergence_ratio", ylabel="Val. error at iteration 10", title="ConstantConvergence")
+    scatterlines!(ax, xrange, ys; color=:blue)
+    # scatter!(ax, 10 .^ (Optim.x_trace(result)), Optim.f_trace(result); color=:red)
+    save(joinpath(sub_dir, "1d_loss_landscape.png"), fig)
+
+    # Recover the best parameters 
+    best_x = xrange[argmin(ys)]
+    pseudo_stepping_constant_convergence = ConstantConvergence(; convergence_ratio=best_x)
+    eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping=pseudo_stepping_constant_convergence, resampler, tikhonov = true)
+    θ_end = iterate!(eki; iterations, pseudo_stepping)
+    save_summary_plots!(θ_end, sub_dir)
+end
+
+@info "Optimizing hyperparameter for Kovachki2018InitialConvergenceRatio"
+begin
+    f(initial_convergence_ratio) = validation_loss_final(Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio))
+    # result = optimize(f, 0.1, 0.9, Brent(); iterations=optim_iterations, store_trace=true)
+    # p = minimizer(result)
+    xrange = collect(0.05:0.05:0.95)
+    ys = f.(xrange)
+
+    sub_dir = joinpath(dir, "Kovachki2018InitialConvergenceRatio")
+
+    fig = Figure(fontsize=24)
+    ax = Axis(fig[1,1]; xlabel="initial_convergence_ratio", ylabel="Val. error at iteration 10", title="Kovachki2018InitialConvergenceRatio")
+    scatterlines!(ax, xrange, ys; color=:blue)
+    save(joinpath(sub_dir, "1d_loss_landscape.png"), fig)
+
+    # Recover the best parameters 
+    best_x = xrange[argmin(ys)]
+    pseudo_stepping_kovachki_2018 = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=best_x)
+    eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping=pseudo_stepping_kovachki_2018, resampler, tikhonov = true)
+    θ_end = iterate!(eki; iterations, pseudo_stepping)
+    save_summary_plots!(θ_end, sub_dir)
+end
+
+@info "Optimizing hyperparameter for Constant"
+begin
+    f_log(step_size) = validation_loss_final(ConstantPseudoTimeStep(; step_size = 10^(step_size)))
+    # result = optimize(f, 0.1, 0.9, Brent(); iterations=optim_iterations, store_trace=true)
+    # p = minimizer(result)
+    xrange = collect(-15.0:0.5:-5.0)
+    ys = f_log.(xrange)
+
+    sub_dir = joinpath(dir, "Constant")
+
+    fig = Figure(fontsize=24)
+    ax = Axis(fig[1,1]; xlabel="log10(step_size)", ylabel="Val. error at iteration 10", title="Constant")
+    scatterlines!(ax, xrange, ys; color=:blue)
+    # scatter!(ax, 10 .^ (Optim.x_trace(result)), Optim.f_trace(result); color=:red)
+    save(joinpath(sub_dir, "1d_loss_landscape.png"), fig)
+
+    # Recover the best parameters 
+    best_x = xrange[argmin(ys)]
+    pseudo_stepping_constant = ConstantPseudoTimeStep(; step_size = 10^best_x)
+    eki = EnsembleKalmanInversion(training; noise_covariance=noise_covariance, pseudo_stepping=pseudo_stepping_constant, resampler, tikhonov = true)
+    θ_end = iterate!(eki; iterations, pseudo_stepping)
+    save_summary_plots!(θ_end, sub_dir)
+end
+
+# markercycle = [:rect, :utriangle, :star5, :circle, :cross, :+, :pentagon, :ltriangle, :airplane, :diamond, :star4]
+
+@info "Plotting testing loss trajectories."
+begin
+    fig = Figure(resolution=(1500,400), fontsize=22)
+    ax1 = Axis(fig[1,1]; xlabel="Iteration", ylabel="EKI Objective", title="Error on Test Set", yscale=log10)
+    ax2 = Axis(fig[1,2]; xlabel="Iteration", ylabel="Δt", title="Time Step Trajectory", yscale=log10)
+    for (pseudo_stepping, label, marker, markersize, color) in zip([pseudo_stepping_iglesias2021, pseudo_stepping_kovachki_2018, pseudo_stepping_constant_convergence, pseudo_stepping_constant],
+                                    ["Iglesias 2021", "Kovachki 2018", "Constant Convergence", "Constant"],
+                                    [:rect, :circle, :star5, :diamond],
+                                    [10, 10, 14, 10],
+                                    [:red, :purple, :green, :blue])
+
+        testing_loss_per_iteration, time_step_trajectory = testing_loss_trajectory(pseudo_stepping)
+
+        scatterlines!(ax1, 0:iterations, testing_loss_per_iteration; color=(color, 0.8), marker, markersize, label, linewidth=4)
+        scatterlines!(ax2, 0:iterations, time_step_trajectory; color=(color, 0.8), marker, label, markersize, linewidth=4)
+    end
+    fig[1,3] = Legend(fig, ax1, nothing; framevisible=true)
+    save(joinpath(dir, "pseudo_stepping_comparison.png"), fig)
+end

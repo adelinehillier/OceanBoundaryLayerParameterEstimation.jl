@@ -7,7 +7,7 @@
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "../.."))
 
 using Oceananigans
-using LinearAlgebra, Distributions, JLD2, DataDeps, Random, OffsetArrays
+using LinearAlgebra, Distributions, JLD2, DataDeps, Random, CairoMakie, OffsetArrays, ProgressBars
 using Oceananigans.Units
 using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
 using OceanBoundaryLayerParameterEstimation
@@ -15,11 +15,12 @@ using ParameterEstimocean
 using ParameterEstimocean.Parameters: closure_with_parameters
 using ParameterEstimocean.PseudoSteppingSchemes
 using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
+using ParameterEstimocean.Transformations: Transformation
 
 Random.seed!(1234)
 
 Nz = 32
-Nensemble = 128
+N_ensemble = 128
 architecture = CPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
@@ -29,9 +30,9 @@ description = "Calibrating to days 1-3 of 4-day suite."
 directory = "calibrate_catke_to_lesbrary_4day_5minute_take2/"
 isdir(directory) || mkpath(directory)
 
-path = joinpath(directory, "calibration_setup.txt")
-o = open_output_file(path)
-write(o, "$description \n Δt: $Δt \n Nz: $Nz \n Nensemble: $Nensemble \n Prior type: $prior_type \n")
+dir = joinpath(directory, "calibration_setup.txt")
+o = open_output_file(dir)
+write(o, "$description \n Δt: $Δt \n Nz: $Nz \n N_ensemble: $N_ensemble \n Prior type: $prior_type \n")
 
 #####
 ##### Set up ensemble model
@@ -59,10 +60,10 @@ begin
                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
 
     transformation = (b = Transformation(normalization=ZScore()),
-                    u = Transformation(normalization=ZScore()),
-                    v = Transformation(normalization=ZScore()),
-                    e = Transformation(normalization=RescaledZScore(1e-1)))
-            
+                      u = Transformation(normalization=ZScore()),
+                      v = Transformation(normalization=ZScore()),
+                      e = Transformation(normalization=RescaledZScore(0.01), space=SpaceIndices(; z=16:32)))
+                      
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 end
 
@@ -72,7 +73,8 @@ end
 
 function build_prior(name)
     b = bounds(name, parameter_set)
-    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,10.0))
     prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
 end
 
@@ -84,9 +86,9 @@ free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prio
 
 output_map = ConcatenatedOutputMap()
 
-function inverse_problem(path_fn, Nensemble, times)
+function inverse_problem(path_fn, N_ensemble, times)
     observations = SyntheticObservationsBatch(path_fn, times, Nz; architecture, transformation, field_names, fields_by_case)
-    simulation = lesbrary_ensemble_simulation(observations; Nensemble, architecture, closure, Δt)
+    simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
 end
@@ -95,9 +97,9 @@ training_times = [1.0day, 1.75days, 2.5days, 3.25days, 4.0days]
 validation_times = [0.5days, 1.0days, 1.5days, 2.0days]
 testing_times = [1.0days, 3.0days, 6.0days]
 
-training = inverse_problem(four_day_suite_path_2m, Nensemble, training_times)
-validation = inverse_problem(two_day_suite_path_2m, Nensemble, validation_times)
-testing = inverse_problem(six_day_suite_path_2m, Nensemble, testing_times)
+training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times)
+validation = inverse_problem(two_day_suite_path_2m, N_ensemble, validation_times)
+testing = inverse_problem(six_day_suite_path_2m, N_ensemble, testing_times)
 
 write(o, "Training observations: $(summary(training.observations)) \n")
 write(o, "Validation observations: $(summary(validation.observations)) \n")
@@ -116,14 +118,14 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 10
+iterations = 5
 
 function estimate_noise_covariance(data_path_fns, times)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times, Nz; architecture, transformation, field_names, fields_by_case) for dp in data_path_fns]
     representative_observations = first(obsns_various_resolutions).observations
-    Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
+    # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
-    noise_covariance = noise_covariance + 0.01 * I(Nobs) * mean(noise_covariance) # prevent zeros
+    noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(noise_covariance) # prevent zeros
     return noise_covariance  
 end
 
@@ -162,6 +164,29 @@ visualize!(testing, final_params;
 write(o, "Final ensemble mean: $(final_params) \n")
 close(o)
 
+begin
+    θ̅₀ = eki.iteration_summaries[0].ensemble_mean
+    θ̅₁₀ = final_params
+    Gb = forward_map(eki.inverse_problem, [θ̅₀, θ̅₁₀])[:,1:2]
+    G₀ = Gb[:,1]
+    G₁₀ = Gb[:,2]
+    truth = eki.mapped_observations
+    x_axis = [1:length(truth) ...]
+
+    f = CairoMakie.Figure(resolution=(2500,1000), fontsize=48)
+    ax = Axis(f[1,1])
+    lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
+    lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
+    axislegend(ax)
+    hidexdecorations!(ax)
+
+    ax2 = Axis(f[2,1])
+    lines!(ax2, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
+    lines!(ax2, x_axis, G₁₀; label = "G(θ̅₁₀)", linewidth=4, color=:black)
+    axislegend(ax2)
+
+    save(joinpath(directory, "superimposed_forward_map_output.png"), f)
+end
 ###
 ### Summary Plots
 ###
@@ -180,10 +205,10 @@ plot_pairwise_ensembles!(eki, directory)
 ### CES
 ###
 
-include("emulate_sample_forward_map.jl")
+include("emulate_sample_constrained.jl")
 
 ###
 ### Sensitivity analysis
 ###
 
-include("sensitivity_analysis.jl")
+# include("sensitivity_analysis.jl")

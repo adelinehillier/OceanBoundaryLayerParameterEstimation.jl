@@ -15,6 +15,7 @@ function plot_mcmc_densities!(fig, axes, chain_X, parameter_names;
                                 color = (:blue, 0.5),
                                 type = "hist",
                                 show_means = false,
+                                bandwidths = nothing,
                                 kwargs...)
     @assert type in ["hist", "density"]
 
@@ -26,7 +27,8 @@ function plot_mcmc_densities!(fig, axes, chain_X, parameter_names;
         if type == "hist"
             hist!(ax, samples; label, bins = 50, color, normalization = :pdf, kwargs...)
         elseif type == "density"
-            density!(ax, samples; label, color, bandwidth=sqrt(var(samples))/15, kwargs...)
+            bandwidth = isnothing(bandwidths) ? sqrt(var(samples))/15 : bandwidths[i]
+            density!(ax, samples; label, color, bandwidth, kwargs...)
         end
 
         push!(sample_means, mean(samples))

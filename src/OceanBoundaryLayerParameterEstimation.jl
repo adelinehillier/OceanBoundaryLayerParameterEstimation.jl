@@ -32,6 +32,9 @@ export
     plot_parameter_convergence!,
     plot_pairwise_ensembles!,
     plot_error_convergence!,
+    plot_loss_contour!,
+    plot_eki_particles!,
+    plot_mcmc_particles!,
 
     # uq_visuals.jl
     plot_mcmc_densities,

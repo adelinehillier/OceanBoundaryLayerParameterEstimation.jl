@@ -125,7 +125,7 @@ zscore_X = ZScore(mean(X, dims=2), std(X, dims=2))
 normalize!(X, zscore_X)
 
 # Ensemble covariance across all generated samples
-cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
+cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
 
 # The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
 # The MCMC sampler takes in a function `nll` which maps θ to the negative log value Φ(θ). 

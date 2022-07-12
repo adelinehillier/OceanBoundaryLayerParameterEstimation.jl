@@ -3,10 +3,12 @@
 using Statistics
 using CairoMakie
 using ProgressBars
+using GaussianProcesses
 
 using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
 using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
 using ParameterEstimocean.Parameters: transform_to_constrained
+using ParameterEstimocean.InverseProblems: inverting_forward_map
 
 # Specify a directory to which to save the files generated in this script
 dir = joinpath(directory, "emulate_sample_forward_map")
@@ -44,7 +46,7 @@ G = G[:, not_nan_indices]
 # Transform forward map output samples to uncorrelated space.
 # This will allow us to use the uncertainty estimates from each 
 # GP in the emulator.
-k = 20
+k = 2
 y = eki.mapped_observations
 Ĝ, ŷ = truncate_forward_map_to_length_k_uncorrelated_points(G, y, k)
 
@@ -54,7 +56,7 @@ zscore_X = ZScore(mean(X, dims=2), std(X, dims=2))
 normalize!(X, zscore_X)
 
 # Ensemble covariance across all generated samples (diagonal should be all ones)
-cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
+cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
 
 ###
 ### Emulate and Sample
@@ -67,14 +69,14 @@ cov_θθ_all_iters = cov(X, X, dims = 2, corrected = false)
 # We will take advantage of the parallelizability of our forward map
 # by running parallel chains of MCMC.
 # n_chains = 128
-n_chains = 16
+n_chains = Nensemble
 
 # Length and burn-in length per chain for sampling the true forward map
-chain_length = 1000
+chain_length = 10
 burn_in = 0
 
 # Length and burn-in length per chain for sampling the emulated forward map
-chain_length_emulate = 1000
+chain_length_emulate = 10
 burn_in_emulate = 0
 
 ###
@@ -89,6 +91,12 @@ predicts = []
 validation_results=[]
 for i in ProgressBar(1:k) # forward map index
 
+    ll = zeros(N_param)
+    # log- noise kernel parameter
+    lσ = 0.0
+    # kernel = Matern(3/2, ll, lσ)
+    kernel = SE(ll, lσ)
+
     # Values of the forward maps of each sample at index `i`
     yᵢ = Ĝ[i, :]
 
@@ -96,8 +104,8 @@ for i in ProgressBar(1:k) # forward map index
     # We will sort `yᵢ` and take evenly spaced samples between the upper and
     # lower quartiles so that the samples are representative.
     M = length(yᵢ)
-    lq = Int(round(M/4))
-    uq = lq*3
+    lq = Int(round(M/5))
+    uq = lq*4
     decimal_indices = range(lq, uq, length = Nvalidation)
     evenly_spaced_samples = Int.(round.(decimal_indices))
     emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
@@ -105,7 +113,7 @@ for i in ProgressBar(1:k) # forward map index
     X_validation = X[:, emulator_validation_indices]
     yᵢ_validation = yᵢ[emulator_validation_indices]
 
-    predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], yᵢ[not_emulator_validation_indices]; standardize_X = false, zscore_limit = nothing)
+    predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], yᵢ[not_emulator_validation_indices]; standardize_X = false, zscore_limit = nothing, kernel)
     push!(predicts, predict)
 
     ŷᵢ_validation, Γgp_validation = predict(X_validation)
@@ -143,21 +151,27 @@ function nll_emulator(θ_vector)
 
     inv_sqrt_Γθ = eki.precomputed_arrays[:inv_sqrt_Γθ]
     μθ = eki.precomputed_arrays[:μθ]
-    Γŷ = 0 # assume that Γŷ is negligible compared to Γgp
+    Γ̂y = 0 # assume that Γ̂y is negligible compared to Γgp
     
     Φs = []
     for (i, θ) in enumerate(θ_vector)
 
         Ggp = μ_gps[i, :] # length-k vector
-        Γgp = diagm(Γ_gps[i, i, :])
+        # Γgp = diagm(Γ_gps[i, i, :])
+
+        Γgp = [maximum([1e-10, v]) for v in Γ_gps[i, i, :]] # prevent zero or infinitesimal negative values (numerical error)
+        Γgp = diagm(Γgp)
+
+        # print(Γgp .+ Γ̂y)
+        # print(inv(sqrt(Matrix(Hermitian(Γgp .+ Γ̂y)))))
 
         θ_unconstrained = copy(θ[:,:])
         inverse_normalize!(θ_unconstrained, zscore_X)
-        # Φ₁ = (1/2)*|| (Γgp + Γŷ)^(-½) * (ŷ - Ggp) ||²
-        Φ₁ = (1/2) * norm(inv(sqrt(Γgp .+ Γŷ)) * (ŷ .- Ggp))^2
+        # Φ₁ = (1/2)*|| (Γgp + Γ̂y)^(-½) * (ŷ - Ggp) ||²
+        Φ₁ = (1/2) * norm(inv(sqrt(Γgp .+ Γ̂y)) * (ŷ .- Ggp))^2
         # Φ₂ = (1/2)*|| Γθ^(-½) * (θ - μθ) ||² 
         Φ₂ = eki.tikhonov ? (1/2) * norm(inv_sqrt_Γθ * (θ_unconstrained .- μθ))^2 : 0
-        Φ₃ = (1/2) * log(det(Γgp .+ Γŷ))
+        Φ₃ = (1/2) * log(det(Γgp .+ Γ̂y))
         
         push!(Φs, Φ₁ + Φ₂ + Φ₃)
     end
@@ -186,40 +200,96 @@ unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_proble
 ### Sample from true eki objective using parallel chains of MCMC
 ###
 
-# θ is a vector of parameter vectors
-function nll_true(θ)
+function nll_true_transformed(θ_vector)
 
     # vector of vectors to 2d array
-    θ_mx = hcat(θ...)
+    θ_mx = hcat(θ_vector...)
     inverse_normalize!(θ_mx, zscore_X)
 
-    G = forward_map(training, θ)
+    G = inverting_forward_map(training, θ_mx)
 
-    # # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
-    # objective_values = []
-    # error = 0
-    # for j in 1:size(θ_mx, 2)
-    #     try
-    #         error = sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=true))
-    #     catch DomainError
-    #         error = Inf
-    #     end
-    #     push!(objective_values, error)
-    # end
-    objective_values = [sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=false)) for j in 1:size(θ_mx, 2)]
+    transformed = transform(G)
 
-    # @show length(objective_values)
-    # @show findall(x -> isfinite(x), objective_values)
+    Φs = []
+    for (i, θ) in enumerate(θ_vector)
 
-    return objective_values ./ min_loss
+        G = transformed[:, i] # length-k vector
+
+        Φ₁ = (1/2) * norm(inv_sqrt_Γ̂y * (ŷ .- G))^2
+        # Φ₂ = eki.tikhonov ? (1/2) * norm(inv_sqrt_Γθ * (θ .- μθ))^2 : 0
+
+        push!(Φs, Φ₁ + Φ₂)
+    end
+    return Φs
 end
 
+# # θ is a vector of parameter vectors
+# function nll_true(θ)
+
+#     # vector of vectors to 2d array
+#     θ_mx = hcat(θ...)
+#     inverse_normalize!(θ_mx, zscore_X)
+
+#     G = forward_map(training, θ)
+
+#     # # Vector of (Φ₁, Φ₂) pairs, one for each ensemble member at the current iteration
+#     # objective_values = []
+#     # error = 0
+#     # for j in 1:size(θ_mx, 2)
+#     #     try
+#     #         error = sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=true))
+#     #     catch DomainError
+#     #         error = Inf
+#     #     end
+#     #     push!(objective_values, error)
+#     # end
+#     objective_values = [sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=false)) for j in 1:size(θ_mx, 2)]
+
+#     # @show length(objective_values)
+#     # @show findall(x -> isfinite(x), objective_values)
+
+#     return objective_values ./ min_loss
+# end
+
+function nll_true(θ_vector)
+
+    # vector of vectors to 2d array
+    θ_mx = hcat(θ_vector...)
+    inverse_normalize!(θ_mx, zscore_X)
+
+    # G = forward_map(training, θ_mx) # constrained
+    G = inverting_forward_map(training, θ_mx) # unconstrained
+
+    Φs = []
+    error = 0
+    for j in 1:size(θ_mx, 2)
+        θj = θ_mx[:, j]
+        if any(θj .> 4) || any(θj .< -4)
+            error = Inf
+        else
+            error = sum(eki_objective(eki, θj, G[:, j]; constrained=false))
+        end
+        push!(Φs, error)
+    end
+
+    # Φs = [sum(eki_objective(eki, θ_mx[:, j], G[:, j]; constrained=false)) for j in 1:size(θ_mx, 2)]
+
+    # @show length(Φs)
+    # @show findall(x -> isfinite(x), Φs)
+
+    return Φs
+end
+
+@info "Running MCMC on the true likelihood."
 chain_X, chain_nll = markov_chain(nll_true, proposal, seed_X, chain_length; burn_in, n_chains)
 
 samples = hcat(chain_X...)
 inverse_normalize!(samples, zscore_X)
 unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
+
+unscaled_chain_X = load(file)["unscaled_chain_X"]
+unscaled_chain_X_emulated = load(file)["unscaled_chain_X_emulated"]
 
 using FileIO
 file = joinpath(dir, "markov_chains.jld2")
@@ -243,6 +313,11 @@ begin
     # color = Makie.LinePattern(; direction = [Vec2f(1), Vec2f(1, -1)], width = 2, tilesize = (20, 20),
     #         linecolor = :blue, background_color = (:blue, 0.2))
     # color = Makie.LinePattern(; background_color = (:blue, 0.2))
+
+    Nparam = length(unscaled_chain_X[1])
+    std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
+    std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
 
     density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                     n_columns,
