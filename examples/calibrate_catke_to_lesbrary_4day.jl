@@ -27,7 +27,7 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take2/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take6/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -62,8 +62,9 @@ begin
     transformation = (b = Transformation(normalization=ZScore()),
                       u = Transformation(normalization=ZScore()),
                       v = Transformation(normalization=ZScore()),
-                      e = Transformation(normalization=RescaledZScore(0.01), space=SpaceIndices(; z=16:32)))
-                      
+                      e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
+                      )
+
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 end
 
@@ -73,8 +74,8 @@ end
 
 function build_prior(name)
     b = bounds(name, parameter_set)
-    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
-    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,10.0))
+    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
     prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
 end
 
@@ -118,7 +119,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 5
+iterations = 20
 
 function estimate_noise_covariance(data_path_fns, times)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times, Nz; architecture, transformation, field_names, fields_by_case) for dp in data_path_fns]
@@ -133,38 +134,40 @@ noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_s
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
+# pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
 pseudo_stepping = Iglesias2021()
-eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-# final_params = iterate!(eki; iterations = 10, show_progress=false, pseudo_stepping)
-
-outputs = OffsetArray([], -1)
-for step = ProgressBar(1:iterations)
-    pseudo_step!(eki; pseudo_stepping)
-    push!(outputs, deepcopy(eki.forward_map_output))
-end
-
-final_params = eki.iteration_summaries[end].parameters
-
-visualize!(training, final_params;
-    field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_training_iglesias2021.png"
-)
-visualize!(validation, final_params;
-    field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_validation_iglesias2021.png"
-)
-visualize!(testing, final_params;
-    field_names = [:u, :v, :b, :e],
-    directory,
-    filename = "realizations_testing_iglesias2021.png"
-)
-
-write(o, "Final ensemble mean: $(final_params) \n")
-close(o)
+# eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
+# final_params = iterate!(eki; iterations, show_progress=false, pseudo_stepping)
 
 begin
+    eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
+
+    outputs = OffsetArray([], -1)
+    for step = ProgressBar(1:iterations)
+        convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
+        # pseudo_stepping = ConstantConvergence(convergence_ratio)        
+        pseudo_step!(eki; pseudo_stepping)
+        push!(outputs, deepcopy(eki.forward_map_output))
+    end
+
+    final_params = eki.iteration_summaries[end].ensemble_mean
+
+    visualize!(training, final_params;
+        field_names = [:u, :v, :b, :e],
+        directory,
+        filename = "realizations_training_iglesias2021.png"
+    )
+    visualize!(validation, final_params;
+        field_names = [:u, :v, :b, :e],
+        directory,
+        filename = "realizations_validation_iglesias2021.png"
+    )
+    visualize!(testing, final_params;
+        field_names = [:u, :v, :b, :e],
+        directory,
+        filename = "realizations_testing_iglesias2021.png"
+    )
+
     θ̅₀ = eki.iteration_summaries[0].ensemble_mean
     θ̅₁₀ = final_params
     Gb = forward_map(eki.inverse_problem, [θ̅₀, θ̅₁₀])[:,1:2]
@@ -187,6 +190,10 @@ begin
 
     save(joinpath(directory, "superimposed_forward_map_output.png"), f)
 end
+
+write(o, "Final ensemble mean: $(final_params) \n")
+close(o)
+
 ###
 ### Summary Plots
 ###

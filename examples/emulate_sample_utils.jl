@@ -68,32 +68,32 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
     return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance
 end
 
-errorbars!(xs, ys, lowerrors, higherrors, whiskerwidth = 3, direction = :x)
+# errorbars!(xs, ys, lowerrors, higherrors, whiskerwidth = 3, direction = :x)
 
 
-Ĝgp, Γ̂gp = Ggp(emulator_sampling_problem, optimal_parameters_emulated; normalized=false)
-Γgp = inverse_project_decorrelated_covariance(Γ̂gp)
-begin
-    fig = CairoMakie.Figure(resolution=(10000,2000))
-    ax = Axis(fig[1,1])
-    xs = Vector(1:length(y))
-    ys = inverse_project_decorrelated(Ĝgp)[:]
-    lines!(ax, xs, Vector(y); label = "Observation", linewidth=1, color=:black)
-    # lines!(ax, xs, ys; color=:blue, label = "Emulator Prediction")
-    hidexdecorations!(ax)
+# Ĝgp, Γ̂gp = Ggp(emulator_sampling_problem, optimal_parameters_emulated; normalized=false)
+# Γgp = inverse_project_decorrelated_covariance(Γ̂gp)
+# begin
+#     fig = CairoMakie.Figure(resolution=(10000,2000))
+#     ax = Axis(fig[1,1])
+#     xs = Vector(1:length(y))
+#     ys = inverse_project_decorrelated(Ĝgp)[:]
+#     lines!(ax, xs, Vector(y); label = "Observation", linewidth=1, color=:black)
+#     # lines!(ax, xs, ys; color=:blue, label = "Emulator Prediction")
+#     hidexdecorations!(ax)
 
-    emulator_uncertainty_std = sqrt.(diag(Γgp))
-    errorbars!(xs, ys, emulator_uncertainty_std, emulator_uncertainty_std, width = 0.5, whiskerwidth = 0.5, direction = :y)
-    # band!(xs, ys .- emulator_uncertainty_std, ys .+ emulator_uncertainty_std; color=(:orange, 0.3), label="Emulator prediction")
-    axislegend(ax)
+#     emulator_uncertainty_std = sqrt.(diag(Γgp))
+#     errorbars!(xs, ys, emulator_uncertainty_std, emulator_uncertainty_std, width = 0.5, whiskerwidth = 0.5, direction = :y)
+#     # band!(xs, ys .- emulator_uncertainty_std, ys .+ emulator_uncertainty_std; color=(:orange, 0.3), label="Emulator prediction")
+#     axislegend(ax)
 
-    save(joinpath(dir, "plot_emulator_prediction_emulator_optimum.png"), fig)
-end
+#     save(joinpath(dir, "plot_emulator_prediction_emulator_optimum.png"), fig)
+# end
 
-f = CairoMakie.Figure(resolution=(2500,1000), fontsize=48)
-lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
-lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
-axislegend(ax)
+# f = CairoMakie.Figure(resolution=(2500,1000), fontsize=48)
+# lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
+# lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
+# axislegend(ax)
 
 
 begin

@@ -5,19 +5,19 @@ using CairoMakie
 using ProgressBars
 using GaussianProcesses
 using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
-using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
+using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covariance_transform
 
-# Specify a directory to which to save the files generated in this script
-dir = joinpath(directory, "emulate_sample_constrained_experimental")
-isdir(dir) || mkdir(dir)
+# # Specify a directory to which to save the files generated in this script
+# dir = joinpath(directory, "emulate_sample_constrained_experimental")
+# isdir(dir) || mkdir(dir)
 
-include("emulate_sample_utils.jl")
+# include("emulate_sample_utils.jl")
 
 # # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
 # # iteration `n` by EKI. This will be the training data for 
 # # the GP emulator. We will filter out all failed particles.
-# n = 5
+# n = 8
 
 # # Reserve `Nvalidation` samples for validation.
 # Nvalidation = 20
@@ -39,7 +39,7 @@ include("emulate_sample_utils.jl")
 # k = 20
 # y = eki.mapped_observations
 # Γy = noise_covariance
-Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance = truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
+# Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance = truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
 # @assert eki.tikhonov
 
@@ -154,32 +154,30 @@ Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_pro
 ### Sample from emulated loss landscape using parallel chains of MCMC
 ###
 
-function Ggp(problem::EmulatorSamplingProblem, θ; normalized = true)
+# function Ggp(problem::EmulatorSamplingProblem, θ; normalized = true)
     
-    @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+#     @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
 
-    θ = collapse_parameters(θ)
+#     θ = collapse_parameters(θ)
 
-    if !normalized
-        θ = copy(θ)
-        normalize!(θ, input_normalization)
-    end
+#     if !normalized
+#         θ = copy(θ)
+#         normalize!(θ, input_normalization)
+#     end
 
-    results = [predict(θ) for predict in predicts]
-    μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
-    Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
+#     results = [predict(θ) for predict in predicts]
+#     μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
+#     Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
     
-    θ_unscaled = copy(θ[:,1:1])
-    normalized && inverse_normalize!(θ_unscaled, input_normalization)
+#     θ_unscaled = copy(θ[:,1:1])
+#     normalized && denormalize!(θ_unscaled, input_normalization)
 
-    Ggp = μ_gps[1, :] # length-k vector
-    Γgp = [maximum([1e-10, v]) for v in Γ_gps[1, 1, :]] # prevent zero or infinitesimal negative values (numerical error)
-    Γgp = diagm(Γgp)
+#     Ggp = μ_gps[1, :] # length-k vector
+#     Γgp = [maximum([1e-10, v]) for v in Γ_gps[1, 1, :]] # prevent zero or infinitesimal negative values (numerical error)
+#     Γgp = diagm(Γgp)
 
-    return Ggp, Γgp
-end
-
-
+#     return Ggp, Γgp
+# end
 
 # using UnPack
 # function nll_unscaled(problem::EmulatorSamplingProblem, θ; normalized = true)
@@ -201,7 +199,7 @@ end
 #     for j = 1:size(θ, 2)
 
 #         θ_unscaled = copy(θ[:,j:j])
-#         normalized && inverse_normalize!(θ_unscaled, input_normalization)
+#         normalized && denormalize!(θ_unscaled, input_normalization)
 
 #         Ggp = μ_gps[j, :] # length-k vector
 #         # Γgp = diagm(Γ_gps[i, i, :])
@@ -226,7 +224,7 @@ end
 
 #     if normalized
 #         θ = copy(θ)
-#         inverse_normalize!(θ, input_normalization)
+#         denormalize!(θ, input_normalization)
 #     end
     
 #     G = forward_map_unlimited(inverse_problem, θ)
@@ -296,11 +294,11 @@ end
 #     save(joinpath(dir, "analyze_loss_components.png"), fig)
 # end
 
-# Scaled negative log likelihood functions used for sampling
-nll(problem::EmulatorSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss_emulated
-nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss
-(problem::EmulatorSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
-(problem::ModelSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
+# # Scaled negative log likelihood functions used for sampling
+# nll(problem::EmulatorSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss_emulated
+# nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss
+# (problem::EmulatorSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
+# (problem::ModelSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
 
 # C = Matrix(Hermitian(cov_θθ_all_iters))
 # @assert C ≈ cov_θθ_all_iters
@@ -316,144 +314,145 @@ nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(pr
 
 # chain_X_emulated, chain_nll_emulated = markov_chain(emulator_sampling_problem, proposal, seed_X, chain_length_emulate; burn_in = burn_in_emulate, n_chains)
 # samples = hcat(chain_X_emulated...)
-# inverse_normalize!(samples, zscore_X)
+# denormalize!(samples, zscore_X)
 # # unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X_emulated = [samples[:,j] for j in 1:size(samples, 2)]
 
-using DynamicHMC, LogDensityProblems
-begin
-    t = problem_transformation(training.free_parameters)
-    P = TransformedLogDensity(t, emulator_sampling_problem)
-    ∇P = ADgradient(:ForwardDiff, P);
+# using DynamicHMC, LogDensityProblems
+# begin
+#     t = problem_transformation(training.free_parameters)
+#     P = TransformedLogDensity(t, emulator_sampling_problem)
+#     # ∇P = ADgradient(:ForwardDiff, P);
+#     ∇P = P
 
-    unscaled_chain_X_emulated_hmc = []
-    chain_nll_emulated_hmc = []
-    for initial_sample in seed_X
+#     unscaled_chain_X_emulated_hmc = []
+#     chain_nll_emulated_hmc = []
+#     for initial_sample in seed_X
 
-        initialization = (q = build_parameters_named_tuple(training.free_parameters, initial_sample),)
+#         initialization = (q = build_parameters_named_tuple(training.free_parameters, initial_sample),)
 
-        # Finally, we sample from the posterior. `chain` holds the chain (positions and
-        # diagnostic information), while the second returned value is the tuned sampler
-        # which would allow continuation of sampling.
-        results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, chain_length_emulate; initialization);
+#         # Finally, we sample from the posterior. `chain` holds the chain (positions and
+#         # diagnostic information), while the second returned value is the tuned sampler
+#         # which would allow continuation of sampling.
+#         results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, chain_length_emulate; initialization);
 
-        # We use the transformation to obtain the posterior from the chain.
-        chain_X_emulated_hmc = transform.(t, results.chain); # vector of NamedTuples
-        samples = hcat(collect.(chain_X_emulated_hmc)...)
-        inverse_normalize!(samples, zscore_X)
-        for j in 1:size(samples, 2)
-            push!(unscaled_chain_X_emulated_hmc, samples[:,j])
-            push!(chain_nll_emulated_hmc, emulator_sampling_problem, samples[:, j])
-        end
-    end
+#         # We use the transformation to obtain the posterior from the chain.
+#         chain_X_emulated_hmc = transform.(t, results.chain); # vector of NamedTuples
+#         samples = hcat(collect.(chain_X_emulated_hmc)...)
+#         denormalize!(samples, zscore_X)
+#         for j in 1:size(samples, 2)
+#             push!(unscaled_chain_X_emulated_hmc, samples[:,j])
+#             push!(chain_nll_emulated_hmc, emulator_sampling_problem, samples[:, j])
+#         end
+#     end
+# end
+
+###
+### Sample from true eki objective using parallel chains of MCMC
+###
+
+chain_X, chain_nll = markov_chain(model_sampling_problem, proposal, seed_X, chain_length; burn_in, n_chains)
+
+samples = hcat(chain_X...)
+denormalize!(samples, zscore_X)
+# unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
+unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
+
+# unscaled_chain_X = load(file)["unscaled_chain_X"]
+# unscaled_chain_X_emulated = load(file)["unscaled_chain_X_emulated"]
+
+using FileIO
+file = joinpath(dir, "markov_chains.jld2")
+save(file, Dict("unscaled_chain_X" => unscaled_chain_X,
+                "unscaled_chain_X_emulated" => unscaled_chain_X_emulated))
+
+# G_sobol = forward_map(big_training, params)
+# save(file, G)
+# G_sobol = load(file)["G"]
+
+begin 
+    n_columns = 3
+    hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
+                                    n_columns,
+                                    directory = dir,
+                                    filename = "mcmc_densities_hist.png",
+                                    label = "Emulated",
+                                    color = (:blue, 0.8),
+                                    type = "hist")
+
+    # color = Makie.LinePattern(; direction = [Vec2f(1), Vec2f(1, -1)], width = 2, tilesize = (20, 20),
+    #         linecolor = :blue, background_color = (:blue, 0.2))
+    # color = Makie.LinePattern(; background_color = (:blue, 0.2))
+
+    std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
+    std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
+
+    density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
+                                    n_columns,
+                                    directory = dir,
+                                    filename = "mcmc_densities_density_textured.png",
+                                    label = "Emulated",
+                                    show_means = true,
+                                    color = (:blue, 0.8),
+                                    type = "density",
+                                    bandwidths)
+
+    plot_mcmc_densities!(hist_fig, hist_axes, unscaled_chain_X, parameter_set.names; 
+                                    n_columns,
+                                    directory = dir,
+                                    filename = "mcmc_densities_hist.png",
+                                    label = "True",
+                                    color = (:orange, 0.5),
+                                    type = "hist")
+
+    plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
+                                    n_columns,
+                                    directory = dir,
+                                    filename = "mcmc_densities_density_textured.png",
+                                    label = "True",
+                                    show_means = true,
+                                    color = (:orange, 0.5),
+                                    strokecolor = :orange, strokewidth = 3, strokearound = true,
+                                    type = "density",
+                                    bandwidths)
 end
 
-# ###
-# ### Sample from true eki objective using parallel chains of MCMC
-# ###
+begin
+    fig = Figure(resolution = (2000, 600), fontsize=28)
 
-# chain_X, chain_nll = markov_chain(model_sampling_problem, proposal, seed_X, chain_length; burn_in, n_chains)
+    xticks=(collect(1:Nparam), string.(collect(parameter_set.names)))
+    xticklabelrotation = pi/2
 
-# samples = hcat(chain_X...)
-# inverse_normalize!(samples, zscore_X)
-# # unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
-# unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
+    Nparam = length(unscaled_chain_X[1])
 
-# # unscaled_chain_X = load(file)["unscaled_chain_X"]
-# # unscaled_chain_X_emulated = load(file)["unscaled_chain_X_emulated"]
+    unscaled_chain_X_mx = hcat(unscaled_chain_X...)
+    cor_true = Statistics.cor(unscaled_chain_X_mx, dims=2)
 
-# using FileIO
-# file = joinpath(dir, "markov_chains.jld2")
-# save(file, Dict("unscaled_chain_X" => unscaled_chain_X,
-#                 "unscaled_chain_X_emulated" => unscaled_chain_X_emulated))
+    unscaled_chain_X_emulated_mx = hcat(unscaled_chain_X_emulated...)
+    cor_emulated = Statistics.cor(unscaled_chain_X_emulated_mx, dims=2)
 
-# # G_sobol = forward_map(big_training, params)
-# # save(file, G)
-# # G_sobol = load(file)["G"]
+    lb = minimum([minimum(cor_true), minimum(cor_emulated)])
+    ub = maximum([maximum(cor_true), maximum(cor_emulated)])
+    lb = -1.0
+    ub = 1.0
 
-# begin 
-#     n_columns = 3
-#     hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
-#                                     n_columns,
-#                                     directory = dir,
-#                                     filename = "mcmc_densities_hist.png",
-#                                     label = "Emulated",
-#                                     color = (:blue, 0.8),
-#                                     type = "hist")
+    ax1 = Axis(fig[1, 1]; xticks, yticks=xticks, title="Emulated", xticklabelrotation)
+    hmap1 = heatmap!(ax1, cor_emulated; colormap = :balance, colorrange=(lb, ub))
+    # Colorbar(fig[1, 2], hmap1; label="Correlation")
 
-#     # color = Makie.LinePattern(; direction = [Vec2f(1), Vec2f(1, -1)], width = 2, tilesize = (20, 20),
-#     #         linecolor = :blue, background_color = (:blue, 0.2))
-#     # color = Makie.LinePattern(; background_color = (:blue, 0.2))
+    ax2 = Axis(fig[1, 2]; xticks, yticks=xticks, title="True", xticklabelrotation)
+    hmap2 = heatmap!(ax2, cor_true; colormap = :balance, colorrange=(lb, ub))
+    Colorbar(fig[1, 3], hmap2; label="Pearson Correlation")
 
-#     std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
-#     std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
-#     bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
+    ax4 = Axis(fig[1, 4]; xticks, yticks=xticks, title="Difference (Emulated - True)", xticklabelrotation)
+    hmap4 = heatmap!(ax4, cor_emulated .- cor_true; colormap = :balance, colorrange=(lb, ub))
 
-#     density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
-#                                     n_columns,
-#                                     directory = dir,
-#                                     filename = "mcmc_densities_density_textured.png",
-#                                     label = "Emulated",
-#                                     show_means = true,
-#                                     color = (:blue, 0.8),
-#                                     type = "density",
-#                                     bandwidths)
+    colsize!(fig.layout, 3, Relative(1/25))
 
-#     plot_mcmc_densities!(hist_fig, hist_axes, unscaled_chain_X, parameter_set.names; 
-#                                     n_columns,
-#                                     directory = dir,
-#                                     filename = "mcmc_densities_hist.png",
-#                                     label = "True",
-#                                     color = (:orange, 0.5),
-#                                     type = "hist")
+    save(joinpath(dir, "correlation_heatmaps.png"), fig)
+end
 
-#     plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
-#                                     n_columns,
-#                                     directory = dir,
-#                                     filename = "mcmc_densities_density_textured.png",
-#                                     label = "True",
-#                                     show_means = true,
-#                                     color = (:orange, 0.5),
-#                                     strokecolor = :orange, strokewidth = 3, strokearound = true,
-#                                     type = "density",
-#                                     bandwidths)
-# end
-
-# begin
-#     fig = Figure(resolution = (2000, 600), fontsize=28)
-
-#     xticks=(collect(1:Nparam), string.(collect(parameter_set.names)))
-#     xticklabelrotation = pi/2
-
-#     Nparam = length(unscaled_chain_X[1])
-
-#     unscaled_chain_X_mx = hcat(unscaled_chain_X...)
-#     cor_true = Statistics.cor(unscaled_chain_X_mx, dims=2)
-
-#     unscaled_chain_X_emulated_mx = hcat(unscaled_chain_X_emulated...)
-#     cor_emulated = Statistics.cor(unscaled_chain_X_emulated_mx, dims=2)
-
-#     lb = minimum([minimum(cor_true), minimum(cor_emulated)])
-#     ub = maximum([maximum(cor_true), maximum(cor_emulated)])
-#     lb = -1.0
-#     ub = 1.0
-
-#     ax1 = Axis(fig[1, 1]; xticks, yticks=xticks, title="Emulated", xticklabelrotation)
-#     hmap1 = heatmap!(ax1, cor_emulated; colormap = :balance, colorrange=(lb, ub))
-#     # Colorbar(fig[1, 2], hmap1; label="Correlation")
-
-#     ax2 = Axis(fig[1, 2]; xticks, yticks=xticks, title="True", xticklabelrotation)
-#     hmap2 = heatmap!(ax2, cor_true; colormap = :balance, colorrange=(lb, ub))
-#     Colorbar(fig[1, 3], hmap2; label="Pearson Correlation")
-
-#     ax4 = Axis(fig[1, 4]; xticks, yticks=xticks, title="Difference (Emulated - True)", xticklabelrotation)
-#     hmap4 = heatmap!(ax4, cor_emulated .- cor_true; colormap = :balance, colorrange=(lb, ub))
-
-#     colsize!(fig.layout, 3, Relative(1/25))
-
-#     save(joinpath(dir, "correlation_heatmaps.png"), fig)
-# end
-
-# # colsize!(fig.layout, 1, Aspect(1, 1.0, 1, 1.0))
-# # colgap!(fig.layout, 7)
-# # display(fig)
+# colsize!(fig.layout, 1, Aspect(1, 1.0, 1, 1.0))
+# colgap!(fig.layout, 7)
+# display(fig)

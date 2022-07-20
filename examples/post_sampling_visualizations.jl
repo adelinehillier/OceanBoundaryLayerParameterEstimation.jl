@@ -12,7 +12,7 @@ optimal_parameters_true = unscaled_chain_X[argmin(chain_nll)]
 
 ni = nj = 50
 
-pname1 = :Cᴰ
+pname1 = :Cᴷu⁻
 pname2 = :Cᴷc⁻
 
 function padded_parameter_range(pname; length=50)
@@ -87,7 +87,7 @@ chain1 = getindex.(unscaled_chain_X, pindex1)
 chain2 = getindex.(unscaled_chain_X, pindex2)
 
 unscaled_seed_X = copy(hcat(seed_X...))
-inverse_normalize!(unscaled_seed_X, zscore_X)
+denormalize!(unscaled_seed_X, zscore_X)
 # chain1seed = getindex.(unscaled_seed_X, pindex1)
 # chain2seed = getindex.(unscaled_seed_X, pindex2)
 chain1seed = unscaled_seed_X[pindex1,:]

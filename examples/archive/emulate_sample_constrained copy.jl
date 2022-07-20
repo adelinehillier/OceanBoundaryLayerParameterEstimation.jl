@@ -49,7 +49,7 @@ burn_in_emulate = burn_in
 ###
 
 using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
-using ParameterEstimocean.Transformations: ZScore, normalize!, inverse_normalize!
+using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using ParameterEstimocean.Parameters: transform_to_constrained
 
 # First, conglomerate all samples generated thus far by EKI.
@@ -168,10 +168,10 @@ proposal(θ) = θ + perturb()
 seed_X = [perturb() for _ in 1:n_chains] # Where to initialize θ
 
 chain_X_emulated, chain_nll_emulated = markov_chain(nll_emulator, proposal, seed_X, chain_length_emulate; burn_in = burn_in_emulate, n_chains)
-# inverse_normalize!.(chain_X_emulated, zscore_X)
+# denormalize!.(chain_X_emulated, zscore_X)
 
 samples = hcat(chain_X_emulated...)
-inverse_normalize!(samples, zscore_X)
+denormalize!(samples, zscore_X)
 unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X_emulated = [samples[:,j] for j in 1:size(samples, 2)]
 
@@ -192,7 +192,7 @@ function nll_true(θ)
 
     # vector of vectors to 2d array
     θ_mx = hcat(θ...)
-    inverse_normalize!(θ_mx, zscore_X)
+    denormalize!(θ_mx, zscore_X)
 
     G = forward_map(training, θ)
 
@@ -218,7 +218,7 @@ end
 chain_X, chain_nll = markov_chain(nll_true, proposal, seed_X, chain_length; burn_in, n_chains)
 
 samples = hcat(chain_X...)
-inverse_normalize!(samples, zscore_X)
+denormalize!(samples, zscore_X)
 unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
 
