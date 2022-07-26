@@ -8,178 +8,180 @@ using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, en
 using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covariance_transform
 
-# # Specify a directory to which to save the files generated in this script
-# dir = joinpath(directory, "emulate_sample_constrained_experimental")
-# isdir(dir) || mkdir(dir)
+# Specify a directory to which to save the files generated in this script
+dir = joinpath(directory, "emulate_sample_constrained_experimental")
+isdir(dir) || mkdir(dir)
 
-# include("emulate_sample_utils.jl")
+include("emulate_sample_utils.jl")
 
-# # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
-# # iteration `n` by EKI. This will be the training data for 
-# # the GP emulator. We will filter out all failed particles.
-# n = 8
-
-# # Reserve `Nvalidation` samples for validation.
-# Nvalidation = 20
-
+# First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
+# iteration `n` by EKI. This will be the training data for 
+# the GP emulator. We will filter out all failed particles.
+# n = 10
 # X = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(n-1)]...) # constrained
 # G = hcat(outputs[0:(n-1)]...)
+X = hcat([constrained_ensemble_array(eki, iter) for iter in 10:19]...) # constrained
+G = hcat(outputs[10:19]...)
 
-# @info "Performing emulation based on $(size(X, 2) - Nvalidation) samples from the first $n iterations of EKI."
+# Reserve `Nvalidation` samples for validation.
+Nvalidation = 20
 
-# # Filter out all failed particles, if any
-# nan_values = vec(mapslices(any, isnan.(G); dims=1)) # bitvector
-# not_nan_indices = findall(.!nan_values) # indices of columns (particles) with no `NaN`s
-# X = X[:, not_nan_indices]
-# G = G[:, not_nan_indices]
+@info "Performing emulation based on $(size(X, 2) - Nvalidation) samples from the first $n iterations of EKI."
 
-# # Transform forward map output samples to uncorrelated space.
-# # This will allow us to use the uncertainty estimates from each 
-# # GP in the emulator.
-# k = 20
-# y = eki.mapped_observations
-# Γy = noise_covariance
-# Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance = truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
+# Filter out all failed particles, if any
+nan_values = vec(mapslices(any, isnan.(G); dims=1)) # bitvector
+not_nan_indices = findall(.!nan_values) # indices of columns (particles) with no `NaN`s
+X = X[:, not_nan_indices]
+G = G[:, not_nan_indices]
 
-# @assert eki.tikhonov
+# Transform forward map output samples to uncorrelated space.
+# This will allow us to use the uncertainty estimates from each 
+# GP in the emulator.
+k = 2
+y = eki.mapped_observations
+Γy = noise_covariance
+Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance = truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
-# # We will approximately non-dimensionalize the inputs according to mean and variance 
-# # computed across all generated training samples.
-# zscore_X = ZScore(mean(X, dims=2), std(X, dims=2))
-# normalize!(X, zscore_X)
+@assert eki.tikhonov
 
-# model_sampling_problem = ModelSamplingProblem(training, zscore_X, ŷ, Γ̂y)
+# We will approximately non-dimensionalize the inputs according to mean and variance 
+# computed across all generated training samples.
+zscore_X = ZScore(mean(X, dims=2), std(X, dims=2))
+normalize!(X, zscore_X)
 
-# # Ensemble covariance across all generated samples (diagonal should be all ones)
-# cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
+model_sampling_problem = ModelSamplingProblem(training, zscore_X, ŷ, Γ̂y)
 
-# ###
-# ### Emulation
-# ###
-
-# # The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
-# # The MCMC sampler takes in a function `nll` which maps θ to the negative log likelihood value Φ(θ). 
-# # In the following example, we use a GP to emulate the forward map output G. 
-
-# # We will take advantage of the parallelizability of our forward map
-# # by running parallel chains of MCMC.
-# n_chains = N_ensemble
-
-# # Length and burn-in length per chain for sampling the true forward map
-# chain_length = 100
-# burn_in = 0
-
-# # Length and burn-in length per chain for sampling the emulated forward map
-# chain_length_emulate = 100
-# burn_in_emulate = 0
-
-# Nparam = length(parameter_set.names)
-
-# # vector of predict functions. Ĝ is k x Nsamples
-# # predicts = [trained_gp_predict_function(Ĝ[i,:]) for i in size(Ĝ,1)]
-# predicts = []
-
-# @info "Training $k gaussian processes for the emulator."
-# validation_results=[]
-# for i in ProgressBar(1:k) # forward map index
-
-#     ll = zeros(Nparam)
-#     # log- noise kernel parameter
-#     lσ = 0.0
-#     # kernel = Matern(3/2, ll, lσ)
-#     kernel = SE(ll, lσ)
-
-#     # Values of the forward maps of each sample at index `i`
-#     yᵢ = Ĝ[i, :]
-
-#     # Reserve `validation_fraction` representative samples for the emulator
-#     # We will sort `yᵢ` and take evenly spaced samples between the upper and
-#     # lower quartiles so that the samples are representative.
-#     M = length(yᵢ)
-#     lq = Int(round(M/5))
-#     uq = lq*4
-#     decimal_indices = range(lq, uq, length = Nvalidation)
-#     evenly_spaced_samples = Int.(round.(decimal_indices))
-#     emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
-#     not_emulator_validation_indices = [i for i in 1:M if !(i in emulator_validation_indices)]
-#     X_validation = X[:, emulator_validation_indices]
-#     yᵢ_validation = yᵢ[emulator_validation_indices]
-
-#     predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], yᵢ[not_emulator_validation_indices]; standardize_X = false, zscore_limit = nothing, kernel)
-#     push!(predicts, predict)
-
-#     ŷᵢ_validation, Γgp_validation = predict(X_validation)
-#     push!(validation_results, (yᵢ_validation, ŷᵢ_validation, diag(Γgp_validation)))
-# end
-
-# emulator_sampling_problem = EmulatorSamplingProblem(predicts, training, zscore_X, ŷ, Γ̂y)
-
-# # begin
-# #     @info "Benchmarking GP training time."
-# #     n_sampless = 50:10:500
-# #     gp_train_times = []
-# #     yᵢ = Ĝ[1, :]
-# #     for n_train_samples in ProgressBar(n_sampless)
-# #         time = @elapsed trained_gp_predict_function(X[:, 1:n_train_samples], yᵢ[1:n_train_samples]; standardize_X = false, zscore_limit = nothing)
-# #         push!(gp_train_times, time)
-# #     end
-# #     fig = CairoMakie.Figure()
-# #     ax = Axis(fig[1,1]; title="Benchmarking: GP Training Time vs. Number of Training Samples", xlabel="Number of Training Samples", ylabel="Time to Optimize GP Kernel on CPU (s)")
-# #     scatter!(n_sampless, Float64.(gp_train_times))
-# #     save(joinpath(dir, "benchmark_gp_train_time.png"), fig)
-# # end
-
-# n_columns = 5
-# N_axes = k
-# n_rows = Int(ceil(N_axes / n_columns))
-# fig = Figure(resolution = (300n_columns, 350n_rows), fontsize = 8)
-# ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
-# for (i, result) in enumerate(validation_results)
-
-#     yᵢ_validation, ŷᵢ_validation, Γgp_validation = result
-#     r = round(Statistics.cor(yᵢ_validation, ŷᵢ_validation); sigdigits=2)
-#     @info "Pearson R for predictions on reserved subset of training points for $(i)th entry in the transformed forward map output : $r"
-#     ax = Axis(fig[ax_coords[i]...], xlabel = "True", 
-#                                     xticks = LinearTicks(2),
-#                                     ylabel = "Predicted",
-#                                     title = "Index $i. Pearson R: $r")
-
-#     scatter!(ax, yᵢ_validation, ŷᵢ_validation)
-#     lines!(ax, yᵢ_validation, yᵢ_validation; color=(:black, 0.5), linewidth=3)
-#     errorbars!(yᵢ_validation, ŷᵢ_validation, sqrt.(Γgp_validation), color = :red, linewidth=2)
-#     save(joinpath(dir, "emulator_validation_performance_linear_linear.png"), fig)
-# end
+# Ensemble covariance across all generated samples (diagonal should be all ones)
+cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
 
 ###
-### Sample from emulated loss landscape using parallel chains of MCMC
+### Emulation
 ###
 
-# function Ggp(problem::EmulatorSamplingProblem, θ; normalized = true)
-    
-#     @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+# The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
+# The MCMC sampler takes in a function `nll` which maps θ to the negative log likelihood value Φ(θ). 
+# In the following example, we use a GP to emulate the forward map output G. 
 
-#     θ = collapse_parameters(θ)
+# We will take advantage of the parallelizability of our forward map
+# by running parallel chains of MCMC.
+n_chains = N_ensemble
 
-#     if !normalized
-#         θ = copy(θ)
-#         normalize!(θ, input_normalization)
+# Length and burn-in length per chain for sampling the true forward map
+chain_length = 100
+burn_in = 0
+
+# Length and burn-in length per chain for sampling the emulated forward map
+chain_length_emulate = 100
+burn_in_emulate = 0
+
+Nparam = length(parameter_set.names)
+
+# vector of predict functions. Ĝ is k x Nsamples
+# predicts = [trained_gp_predict_function(Ĝ[i,:]) for i in size(Ĝ,1)]
+predicts = []
+
+@info "Training $k gaussian processes for the emulator."
+validation_results=[]
+for i in ProgressBar(1:k) # forward map index
+
+    ll = zeros(Nparam)
+    # log- noise kernel parameter
+    lσ = 0.0
+    # kernel = Matern(3/2, ll, lσ)
+    kernel = SE(ll, lσ)
+
+    # Values of the forward maps of each sample at index `i`
+    yᵢ = Ĝ[i, :]
+
+    # Reserve `validation_fraction` representative samples for the emulator
+    # We will sort `yᵢ` and take evenly spaced samples between the upper and
+    # lower quartiles so that the samples are representative.
+    M = length(yᵢ)
+    lq = Int(round(M/5))
+    uq = lq*4
+    decimal_indices = range(lq, uq, length = Nvalidation)
+    evenly_spaced_samples = Int.(round.(decimal_indices))
+    emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
+    not_emulator_validation_indices = [i for i in 1:M if !(i in emulator_validation_indices)]
+    X_validation = X[:, emulator_validation_indices]
+    yᵢ_validation = yᵢ[emulator_validation_indices]
+
+    predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], yᵢ[not_emulator_validation_indices]; standardize_X = false, zscore_limit = nothing, kernel)
+    push!(predicts, predict)
+
+    ŷᵢ_validation, Γgp_validation = predict(X_validation)
+    push!(validation_results, (yᵢ_validation, ŷᵢ_validation, diag(Γgp_validation)))
+end
+
+emulator_sampling_problem = EmulatorSamplingProblem(predicts, training, zscore_X, ŷ, Γ̂y)
+
+# begin
+#     @info "Benchmarking GP training time."
+#     n_sampless = 50:10:500
+#     gp_train_times = []
+#     yᵢ = Ĝ[1, :]
+#     for n_train_samples in ProgressBar(n_sampless)
+#         time = @elapsed trained_gp_predict_function(X[:, 1:n_train_samples], yᵢ[1:n_train_samples]; standardize_X = false, zscore_limit = nothing)
+#         push!(gp_train_times, time)
 #     end
-
-#     results = [predict(θ) for predict in predicts]
-#     μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
-#     Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
-    
-#     θ_unscaled = copy(θ[:,1:1])
-#     normalized && denormalize!(θ_unscaled, input_normalization)
-
-#     Ggp = μ_gps[1, :] # length-k vector
-#     Γgp = [maximum([1e-10, v]) for v in Γ_gps[1, 1, :]] # prevent zero or infinitesimal negative values (numerical error)
-#     Γgp = diagm(Γgp)
-
-#     return Ggp, Γgp
+#     fig = CairoMakie.Figure()
+#     ax = Axis(fig[1,1]; title="Benchmarking: GP Training Time vs. Number of Training Samples", xlabel="Number of Training Samples", ylabel="Time to Optimize GP Kernel on CPU (s)")
+#     scatter!(n_sampless, Float64.(gp_train_times))
+#     save(joinpath(dir, "benchmark_gp_train_time.png"), fig)
 # end
 
-# using UnPack
+n_columns = 5
+N_axes = k
+n_rows = Int(ceil(N_axes / n_columns))
+fig = Figure(resolution = (300n_columns, 350n_rows), fontsize = 8)
+ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
+for (i, result) in enumerate(validation_results)
+
+    yᵢ_validation, ŷᵢ_validation, Γgp_validation = result
+    r = round(Statistics.cor(yᵢ_validation, ŷᵢ_validation); sigdigits=2)
+    @info "Pearson R for predictions on reserved subset of training points for $(i)th entry in the transformed forward map output : $r"
+    ax = Axis(fig[ax_coords[i]...], xlabel = "True", 
+                                    xticks = LinearTicks(2),
+                                    ylabel = "Predicted",
+                                    title = "Index $i. Pearson R: $r")
+
+    scatter!(ax, yᵢ_validation, ŷᵢ_validation)
+    lines!(ax, yᵢ_validation, yᵢ_validation; color=(:black, 0.5), linewidth=3)
+    errorbars!(yᵢ_validation, ŷᵢ_validation, sqrt.(Γgp_validation), color = :red, linewidth=2)
+    save(joinpath(dir, "emulator_validation_performance_linear_linear.png"), fig)
+end
+
+##
+## Sample from emulated loss landscape using parallel chains of MCMC
+##
+
+using UnPack
+
+function Ggp(problem::EmulatorSamplingProblem, θ; normalized = true)
+    
+    @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+
+    θ = collapse_parameters(θ)
+
+    if !normalized
+        θ = copy(θ)
+        normalize!(θ, input_normalization)
+    end
+
+    results = [predict(θ) for predict in predicts]
+    μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
+    Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
+    
+    θ_unscaled = copy(θ[:,1:1])
+    normalized && denormalize!(θ_unscaled, input_normalization)
+
+    Ggp = μ_gps[1, :] # length-k vector
+    Γgp = [maximum([1e-10, v]) for v in Γ_gps[1, 1, :]] # prevent zero or infinitesimal negative values (numerical error)
+    Γgp = diagm(Γgp)
+
+    return Ggp, Γgp
+end
+
 # function nll_unscaled(problem::EmulatorSamplingProblem, θ; normalized = true)
     
 #     @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
@@ -192,8 +194,8 @@ using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covarian
 #     end
 
 #     results = [predict(θ) for predict in predicts]
-#     μ_gps = hcat(getindex.(results, 1)...) # length(θ) x k
-#     Γ_gps = cat(getindex.(results, 2)...; dims=3) # length(θ) x length(θ) x k
+#     μ_gps = hcat(getindex.(results, 1)...) # size(θ, 2) x k
+#     Γ_gps = cat(getindex.(results, 2)...; dims=3) # size(θ, 2) x size(θ, 2) x k
     
 #     Φs = []
 #     for j = 1:size(θ, 2)
@@ -216,87 +218,125 @@ using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covarian
 #     return Φs
 # end
 
-# function nll_unscaled(problem::ModelSamplingProblem, θ; normalized = true)
+function nll_unscaled(problem::EmulatorSamplingProblem, θ::Vector{<:Real}; normalized = true)
 
-#     @unpack inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+    @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
 
-#     θ = collapse_parameters(θ)
+    if !normalized
+        θ = copy(θ[:])
+        normalize!(θ, input_normalization)
+        θ = [θ...]
+    end
 
-#     if normalized
-#         θ = copy(θ)
-#         denormalize!(θ, input_normalization)
-#     end
+    results = [predict(θ) for predict in predicts]
+    μ_gps = getindex.(results, 1) # length-k vector
+    Γ_gps = getindex.(results, 2) # length-k vector
+
+    θ_unscaled = copy(θ[:,:])
+    normalized && denormalize!(θ_unscaled, input_normalization)
+
+    Γgp = [maximum([1e-10, v]) for v in Γ_gps] # prevent zero or infinitesimal negative values (numerical error)
+    Γgp = diagm(Γgp)
+
+    return evaluate_objective(problem, θ_unscaled, μ_gps; Γgp)
+
+end
+
+function nll_unscaled(problem::EmulatorSamplingProblem, θ; normalized = true)
+
+    θ = collapse_parameters(θ)
+        
+    Φs = []
+    for j = 1:size(θ, 2)
+        push!(Φs, nll_unscaled(problem, θ; normalized = true))
+    end
+
+    return Φs
+end
+
+function nll_unscaled(problem::ModelSamplingProblem, θ; normalized = true)
+
+    @unpack inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+
+    θ = collapse_parameters(θ)
+
+    if normalized
+        θ = copy(θ)
+        denormalize!(θ, input_normalization)
+    end
     
-#     G = forward_map_unlimited(inverse_problem, θ)
-#     Ĝ = project_decorrelated(G)
+    G = forward_map_unlimited(inverse_problem, θ)
+    Ĝ = project_decorrelated(G)
 
-#     Φs = [evaluate_objective(problem, θ[:, j], Ĝ[:, j]) for j in 1:size(θ, 2)]
+    Φs = [evaluate_objective(problem, θ[:, j], Ĝ[:, j]) for j in 1:size(θ, 2)]
 
-#     return Φs
-# end
+    return Φs
+end
 
-# begin
-#     # Estimate the minimum loss for the model
-#     X_full = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(eki.iteration-1)]...) # constrained
-#     G_full = hcat(outputs[0:(eki.iteration-1)]...)
-#     Ĝ_full = project_decorrelated(G_full)
-#     Φ_full = [evaluate_objective(model_sampling_problem, X_full[:, j], Ĝ_full[:, j]) for j in 1:size(X_full, 2)]
-#     objective_values_model = sum.(Φ_full)
-#     # Φ_full = nll_unscaled(model_sampling_problem, X_full, normalized=false)
-#     # objective_values_model = sum.(Φ_full)
-#     const min_loss = minimum(objective_values_model) # avoid global variable for performance
+begin
+    # Estimate the minimum loss for the model
+    X_full = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(eki.iteration-1)]...) # constrained
+    G_full = hcat(outputs[0:(eki.iteration-1)]...)
+    Ĝ_full = project_decorrelated(G_full)
+    Φ_full = [evaluate_objective(model_sampling_problem, X_full[:, j], Ĝ_full[:, j]) for j in 1:size(X_full, 2)]
+    objective_values_model = sum.(Φ_full)
+    # Φ_full = nll_unscaled(model_sampling_problem, X_full, normalized=false)
+    # objective_values_model = sum.(Φ_full)
+    const min_loss = minimum(objective_values_model) # avoid global variable for performance
 
-#     # Estimate the minimum loss for the emulator
-#     Φ_full_emulated = nll_unscaled(emulator_sampling_problem, X_full, normalized=false)
-#     objective_values_emulator = sum.(Φ_full_emulated)
-#     const min_loss_emulated = minimum(objective_values_emulator) # avoid global variable for performance
-# end
+    # Estimate the minimum loss for the emulator
+    Φ_full_emulated = nll_unscaled(emulator_sampling_problem, X_full, normalized=false)
+    objective_values_emulator = sum.(Φ_full_emulated)
+    const min_loss_emulated = minimum(objective_values_emulator) # avoid global variable for performance
+end
 
-# begin
-#     fig = CairoMakie.Figure()
+begin
+    fig = CairoMakie.Figure()
     
-#     using LaTeXStrings
+    using LaTeXStrings
 
-#     g1 = fig[1,1] = GridLayout(;title="Model loss across EKI samples")
-#     g2 = fig[1,2] = GridLayout(;title="Emulator loss across EKI samples")
+    g1 = fig[1,1] = GridLayout(;title="Model loss across EKI samples")
+    g2 = fig[1,2] = GridLayout(;title="Emulator loss across EKI samples")
 
-#     ax1_true = Axis(g1[2,1]; title = "Φ₁ = (1/2) * || (Γ̂y)^(-½) * (ŷ - G) ||²")
-#     ax2_true = Axis(g1[3,1]; title = "Φ₂ = (1/2) * || Γθ^(-½) * (θ - μθ) ||² ")
-#     ax3_true = Axis(g1[4,1]; title = "Φ₃ = (1/2) * log( |Γ̂y| )")
-#     # ax1_emulated = Axis(g2[1,1]; title = L"\Phi_1 = \frac{1}{2}{\left\| ({\hat{\Gamma}_{GP}}(\theta) + {\hat{\Gamma}_y})^{-\frac{1}{2}}(\hat{y} - \hat{G}_{GP}(\theta)) \right\|}^2")
-#     # ax2_emulated = Axis(g2[1,2]; title = L"\Phi_2 = \frac{1}{2}{\left\| {{\Gamma_\theta}}^{-\frac{1}{2}}(\theta - \bm{\mu}_{\theta}) \right\|}^2 ")
-#     # ax3_emulated = Axis(g2[1,3]; title = L"\Phi_3 = \frac{1}{2}\log \det ({\hat{\Gamma}_{GP}}(\theta) + {\hat{\Gamma}_y})")
-#     ax1_emulated = Axis(g2[2,1]; title = "Φ₁ = (1/2) * || (Γgp + Γ̂y)^(-½) * (ŷ - Ggp) ||²")
-#     ax2_emulated = Axis(g2[3,1]; title = "Φ₂ = (1/2) * || Γθ^(-½) * (θ - μθ) ||² ")
-#     ax3_emulated = Axis(g2[4,1]; title = "Φ₃ = (1/2) * log( |Γgp + Γ̂y| )")
+    ax1_true = Axis(g1[2,1]; title = "Φ₁ = (1/2) * || (Γ̂y)^(-½) * (ŷ - G) ||²")
+    ax2_true = Axis(g1[3,1]; title = "Φ₂ = (1/2) * || Γθ^(-½) * (θ - μθ) ||² ")
+    ax3_true = Axis(g1[4,1]; title = "Φ₃ = (1/2) * log( |Γ̂y| )")
+    # ax1_emulated = Axis(g2[1,1]; title = L"\Phi_1 = \frac{1}{2}{\left\| ({\hat{\Gamma}_{GP}}(\theta) + {\hat{\Gamma}_y})^{-\frac{1}{2}}(\hat{y} - \hat{G}_{GP}(\theta)) \right\|}^2")
+    # ax2_emulated = Axis(g2[1,2]; title = L"\Phi_2 = \frac{1}{2}{\left\| {{\Gamma_\theta}}^{-\frac{1}{2}}(\theta - \bm{\mu}_{\theta}) \right\|}^2 ")
+    # ax3_emulated = Axis(g2[1,3]; title = L"\Phi_3 = \frac{1}{2}\log \det ({\hat{\Gamma}_{GP}}(\theta) + {\hat{\Gamma}_y})")
+    ax1_emulated = Axis(g2[2,1]; title = "Φ₁ = (1/2) * || (Γgp + Γ̂y)^(-½) * (ŷ - Ggp) ||²")
+    ax2_emulated = Axis(g2[3,1]; title = "Φ₂ = (1/2) * || Γθ^(-½) * (θ - μθ) ||² ")
+    ax3_emulated = Axis(g2[4,1]; title = "Φ₃ = (1/2) * log( |Γgp + Γ̂y| )")
 
-#     hist!(ax1_true, getindex.(Φ_full, 1); bins=30)
-#     hist!(ax2_true, getindex.(Φ_full, 2); bins=30)
-#     hist!(ax3_true, getindex.(Φ_full, 3); bins=30)
-#     hist!(ax1_emulated, getindex.(Φ_full_emulated, 1); bins=30)
-#     hist!(ax2_emulated, getindex.(Φ_full_emulated, 2); bins=30)
-#     hist!(ax3_emulated, getindex.(Φ_full_emulated, 3); bins=30)
+    hist!(ax1_true, getindex.(Φ_full, 1); bins=30)
+    hist!(ax2_true, getindex.(Φ_full, 2); bins=30)
+    hist!(ax3_true, getindex.(Φ_full, 3); bins=30)
+    hist!(ax1_emulated, getindex.(Φ_full_emulated, 1); bins=30)
+    hist!(ax2_emulated, getindex.(Φ_full_emulated, 2); bins=30)
+    hist!(ax3_emulated, getindex.(Φ_full_emulated, 3); bins=30)
 
-#     Label(g1[1, 1, Top()], "Model loss across EKI samples",
-#                 textsize = 20,
-#                 font = "TeX Gyre Heros",
-#                 # padding = (0, 5, 5, 0),
-#                 halign = :center)
-#     Label(g2[1, 1, Top()], "Emulator loss across EKI samples",
-#                 textsize = 20,
-#                 font = "TeX Gyre Heros",
-#                 # padding = (0, 5, 5, 0),
-#                 halign = :center)
+    Label(g1[1, 1, Top()], "Model loss across EKI samples",
+                textsize = 20,
+                font = "TeX Gyre Heros",
+                # padding = (0, 5, 5, 0),
+                halign = :center)
+    Label(g2[1, 1, Top()], "Emulator loss across EKI samples",
+                textsize = 20,
+                font = "TeX Gyre Heros",
+                # padding = (0, 5, 5, 0),
+                halign = :center)
 
-#     rowsize!(g1, 1, Fixed(10))
-#     rowsize!(g2, 1, Fixed(10))
+    rowsize!(g1, 1, Fixed(10))
+    rowsize!(g2, 1, Fixed(10))
 
-#     save(joinpath(dir, "analyze_loss_components.png"), fig)
-# end
+    save(joinpath(dir, "analyze_loss_components.png"), fig)
+end
 
 # # Scaled negative log likelihood functions used for sampling
 # nll(problem::EmulatorSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss_emulated
 # nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ min_loss
+
+# # Assumes the input is a single parameter set; not a vector of parameter sets
 # (problem::EmulatorSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
 # (problem::ModelSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
 
@@ -318,34 +358,34 @@ using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covarian
 # # unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X_emulated = [samples[:,j] for j in 1:size(samples, 2)]
 
-# using DynamicHMC, LogDensityProblems
-# begin
-#     t = problem_transformation(training.free_parameters)
-#     P = TransformedLogDensity(t, emulator_sampling_problem)
-#     # ∇P = ADgradient(:ForwardDiff, P);
-#     ∇P = P
+using DynamicHMC, LogDensityProblems, Zygote
+begin
+    t = problem_transformation(training.free_parameters)
+    P = TransformedLogDensity(t, emulator_sampling_problem)
+    ∇P = ADgradient(:Zygote, P);
 
-#     unscaled_chain_X_emulated_hmc = []
-#     chain_nll_emulated_hmc = []
-#     for initial_sample in seed_X
+    unscaled_chain_X_emulated_hmc = []
+    chain_nll_emulated_hmc = []
+    for initial_sample in ProgressBar(seed_X)
 
-#         initialization = (q = build_parameters_named_tuple(training.free_parameters, initial_sample),)
+        # initialization = (q = build_parameters_named_tuple(training.free_parameters, initial_sample),)
+        initialization = (q = initial_sample,)
 
-#         # Finally, we sample from the posterior. `chain` holds the chain (positions and
-#         # diagnostic information), while the second returned value is the tuned sampler
-#         # which would allow continuation of sampling.
-#         results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, chain_length_emulate; initialization);
+        # Finally, we sample from the posterior. `chain` holds the chain (positions and
+        # diagnostic information), while the second returned value is the tuned sampler
+        # which would allow continuation of sampling.
+        results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, chain_length_emulate; initialization);
 
-#         # We use the transformation to obtain the posterior from the chain.
-#         chain_X_emulated_hmc = transform.(t, results.chain); # vector of NamedTuples
-#         samples = hcat(collect.(chain_X_emulated_hmc)...)
-#         denormalize!(samples, zscore_X)
-#         for j in 1:size(samples, 2)
-#             push!(unscaled_chain_X_emulated_hmc, samples[:,j])
-#             push!(chain_nll_emulated_hmc, emulator_sampling_problem, samples[:, j])
-#         end
-#     end
-# end
+        # We use the transformation to obtain the posterior from the chain.
+        chain_X_emulated_hmc = transform.(t, results.chain); # vector of NamedTuples
+        samples = hcat(collect.(chain_X_emulated_hmc)...)
+        denormalize!(samples, zscore_X)
+        for j in 1:size(samples, 2)
+            push!(unscaled_chain_X_emulated_hmc, samples[:,j])
+            push!(chain_nll_emulated_hmc, emulator_sampling_problem, samples[:, j])
+        end
+    end
+end
 
 ###
 ### Sample from true eki objective using parallel chains of MCMC
