@@ -27,7 +27,7 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take6/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -134,8 +134,8 @@ noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_s
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
-# pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
-pseudo_stepping = Iglesias2021()
+pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
+# pseudo_stepping = Iglesias2021()
 # eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
 # final_params = iterate!(eki; iterations, show_progress=false, pseudo_stepping)
 
