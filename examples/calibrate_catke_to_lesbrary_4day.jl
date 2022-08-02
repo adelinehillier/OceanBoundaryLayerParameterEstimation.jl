@@ -27,7 +27,7 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_wider_lognormal/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -72,12 +72,26 @@ end
 ##### Build free parameters
 #####
 
+import ParameterEstimocean.Parameters: transform_to_unconstrained, transform_to_constrained, covariance_transform_diagonal, unconstrained_prior
+unconstrained_prior(Π::LogNormal) = Normal(Π.μ, Π.σ)
+transform_to_unconstrained(Π::LogNormal, Y) = log(Y)
+transform_to_constrained(Π::LogNormal, X) = exp(X)
+covariance_transform_diagonal(::LogNormal, X) = exp(X)
+
 function build_prior(name)
-    b = bounds(name, parameter_set)
-    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
-    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
-    prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
+    # b = bounds(name, parameter_set)
+    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    # # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
+    # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
+    # μ = 0
+    # σ = 0.9
+    # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
+    return lognormal(;mean=0.5, std=0.5)
+    # return LogNormal(0, 1.2)
 end
+
+# return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
+# stdv = sqrt((exp(σ^2)-1)*exp(2μ+σ^2))
 
 free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
 
@@ -88,7 +102,7 @@ free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prio
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times, Nz; architecture, transformation, field_names, fields_by_case)
+    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
@@ -122,7 +136,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 iterations = 20
 
 function estimate_noise_covariance(data_path_fns, times)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times, Nz; architecture, transformation, field_names, fields_by_case) for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
     representative_observations = first(obsns_various_resolutions).observations
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
