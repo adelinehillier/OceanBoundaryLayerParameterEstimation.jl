@@ -10,7 +10,7 @@ optimal_parameters_true = unscaled_chain_X[argmin(chain_nll)]
 ### Visualize loss landscape
 ###
 
-ni = nj = 50
+ni = nj = 40
 
 pname1 = :Cᴷu⁻
 pname2 = :Cᴷc⁻
@@ -19,8 +19,8 @@ function padded_parameter_range(pname; length=50)
     ensemble = vcat([getproperty.(summary.parameters, pname) for summary in eki.iteration_summaries]...)
     pmin = minimum(ensemble)
     pmax = maximum(ensemble)
-    padding = (pmax - pmin)/2
-    # padding = 0
+    # padding = (pmax - pmin)/2
+    padding = 0
     return range(maximum([0, pmin - padding]); stop=(pmax + padding), length)
 end
 
@@ -28,6 +28,10 @@ parameter_index(eki, pname) = findall( x -> x == pname, [eki.inverse_problem.fre
 
 p1 = padded_parameter_range(pname1; length = ni)
 p2 = padded_parameter_range(pname2; length = nj)
+
+# p1 = range(0.001; stop=4, length=ni)
+# p2 = range(0.001; stop=4, length=nj)
+
 # xlims = ga.content[3].content.xaxis.attributes.limits[]
 # ylims = ga.content[3].content.yaxis.attributes.limits[]
 # p1 = range(xlims[1]; stop=xlims[2], length=ni)
@@ -86,8 +90,8 @@ chain2_emulated = getindex.(unscaled_chain_X_emulated, pindex2)
 chain1 = getindex.(unscaled_chain_X, pindex1)
 chain2 = getindex.(unscaled_chain_X, pindex2)
 
-unscaled_seed_X = copy(hcat(seed_X...))
-denormalize!(unscaled_seed_X, zscore_X)
+unscaled_seed_X = inverse_normalize_transform(hcat(seed_X...), normalization_transformation)
+
 # chain1seed = getindex.(unscaled_seed_X, pindex1)
 # chain2seed = getindex.(unscaled_seed_X, pindex2)
 chain1seed = unscaled_seed_X[pindex1,:]

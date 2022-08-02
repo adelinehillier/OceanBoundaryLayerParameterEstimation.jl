@@ -157,26 +157,25 @@ function var(Π::ScaledLogitNormal; samples = 100000)
     return var(rand(Π, samples))
 end
 
-count_parameters(θ::Vector{<:Real}) = 1
-count_parameters(θ::Matrix) = size(θ, 2)
-count_parameters(θ::Vector{<:Vector}) = length(θ)
-
+# count_parameters(θ::Vector{<:Real}) = 1
+# count_parameters(θ::Matrix) = size(θ, 2)
+# count_parameters(θ::Vector{<:Vector}) = length(θ)
 
 using ParameterEstimocean.Parameters: build_parameters_named_tuple
 to_named_tuple_parameters(ip, θ::Vector) = [build_parameters_named_tuple(ip.free_parameters, θi) for θi in θ]
 to_named_tuple_parameters(ip, θ::Union{NamedTuple, Vector{<:Number}}) = to_named_tuple_parameters(ip, [θ])
 to_named_tuple_parameters(ip, θ::Matrix) = to_named_tuple_parameters(ip, [θ[:, k] for k = 1:size(θ, 2)])
 
-
 using ParameterEstimocean.InverseProblems: Nensemble
 # Version of `forward_map` that can handle arbitrary numbers of parameters
 function forward_map_unlimited(inverse_problem, θ)
 
     N_ensemble = Nensemble(inverse_problem)
-    N_params = count_parameters(θ)
+    # N_params = count_parameters(θ)
     θ = to_named_tuple_parameters(inverse_problem, θ)
+    N_params = length(θ)
 
-    G = forward_map(inverse_problem, θ[1:N_ensemble])
+    G = forward_map(inverse_problem, θ[1:minimum([N_params, N_ensemble])])
     i = 1
     while size(G, 2) < N_params
     # for i in 1:Int(floor(N_params / N_ensemble))
@@ -201,10 +200,33 @@ collapse_parameters(θ::Vector{<:Real}) = θ[:,:]
 collapse_parameters(θ::AbstractVector{<:NamedTuple}) = collapse_parameters.(θ)
 collapse_parameters(θ::NamedTuple) = collect(θ)
 
+using TransformVariables
+using TransformVariables: TransformTuple, ScalarTransform
+using TransformVariables: transform, inverse
 using ParameterEstimocean.Transformations: AbstractNormalization
+
+struct NormalizationTransformation
+    normalization::AbstractNormalization
+    transformation::Vector{<:ScalarTransform}
+end
+
+function normalize_transform(θ, nt::NormalizationTransformation)
+    θ = θ[:,:]
+    θ = mapslices(x -> inverse.(nt.transformation, x), θ, dims=1)
+    normalize!(θ, nt.normalization)
+    return θ
+end
+
+function inverse_normalize_transform(θ, nt::NormalizationTransformation)
+    θ = θ[:,:]
+    denormalize!(θ, nt.normalization)
+    θ = mapslices(x -> transform.(nt.transformation, x), θ, dims=1)
+    return θ
+end
+
 struct ModelSamplingProblem{V <: AbstractVector, M <: AbstractMatrix}
     inverse_problem :: InverseProblem
-    input_normalization :: AbstractNormalization
+    input_normalization :: NormalizationTransformation
     Γ̂y :: M
     ŷ :: M
     inv_sqrt_Γθ :: M
@@ -225,7 +247,7 @@ end
 
 struct EmulatorSamplingProblem{P, V, M <: AbstractMatrix}
     predicts :: P
-    input_normalization :: AbstractNormalization
+    input_normalization :: NormalizationTransformation
     Γ̂y :: M
     ŷ :: M
     inv_sqrt_Γθ :: M
@@ -254,15 +276,4 @@ function evaluate_objective(problem, θ, Ĝ; Γgp=0)
     Φ₃ = (1/2) * log(det(Γgp .+ problem.Γ̂y))
 
     return (Φ₁, Φ₂, Φ₃)
-end
-
-using TransformVariables
-function problem_transformation(fp::FreeParameters)
-    names = fp.names
-    transforms = []
-    for name in names
-        transform = bounds(name, parameter_set)[1] == 0 ? asℝ₊ : asℝ
-        push!(transforms, transform)
-    end
-    return as(NamedTuple{Tuple(names)}(transforms))
 end

@@ -17,14 +17,14 @@ using ParameterEstimocean.Transformations: Transformation
 #                   v = Transformation(normalization=ZScore()),
 #                   e = Transformation(normalization=RescaledZScore(1e-1)))
 
-function SyntheticObservationsBatch(path_fn, times, Nz; transformation=transformation, datadep = true, architecture = CPU(), field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case)
+function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = true, architecture = CPU(), field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
 
    observations = Vector{SyntheticObservations}()
 
    for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
 
       data_path = datadep ? (@datadep_str path_fn(case)) : path_fn(case)
-      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, architecture, regrid=(1, 1, Nz))
+      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, architecture, regrid)
 
       push!(observations, observation)
    end

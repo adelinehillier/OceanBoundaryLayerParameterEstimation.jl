@@ -19,7 +19,29 @@ using ParameterEstimocean.Transformations: Transformation
 
 Random.seed!(1234)
 
-Nz = 32
+z = [-256.0,
+     -238.3,
+     -207.2,
+     -182.3,
+     -162.5,
+     -146.5,
+     -133.0,
+     -121.3,
+     -110.5,
+     -100.2,
+     - 90.0,
+     - 80.0,
+     - 70.0,
+     - 60.0,
+     - 50.0,
+     - 40.0,
+     - 30.0,
+     - 20.0,
+     - 10.0,
+        0.0]
+
+regrid = RectilinearGrid(size=length(z)-1; z, topology=(Flat, Flat, Bounded))
+
 N_ensemble = 128
 architecture = CPU()
 Δt = 5minutes
@@ -27,12 +49,11 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_wider_lognormal/"
+directory = "calibrate_catke_to_lesbrary_ECHO_take1/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
 o = open_output_file(dir)
-write(o, "$description \n Δt: $Δt \n Nz: $Nz \n N_ensemble: $N_ensemble \n Prior type: $prior_type \n")
 
 #####
 ##### Set up ensemble model
@@ -62,7 +83,7 @@ begin
     transformation = (b = Transformation(normalization=ZScore()),
                       u = Transformation(normalization=ZScore()),
                       v = Transformation(normalization=ZScore()),
-                      e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
+                      e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=10:19)),
                       )
 
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
@@ -83,11 +104,11 @@ function build_prior(name)
     # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
     # # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
     # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
+
     # μ = 0
     # σ = 0.9
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
-    return lognormal(;mean=0.5, std=0.5)
-    # return LogNormal(0, 1.2)
+    return lognormal(;mean=0.5, std=0.3)
 end
 
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
@@ -102,7 +123,7 @@ free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prio
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid)
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
@@ -133,10 +154,10 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 20
+iterations = 10
 
 function estimate_noise_covariance(data_path_fns, times)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid) for dp in data_path_fns]
     representative_observations = first(obsns_various_resolutions).observations
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
@@ -148,8 +169,8 @@ noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_s
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
-pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
-# pseudo_stepping = Iglesias2021()
+# pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
+pseudo_stepping = Iglesias2021()
 # eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
 # final_params = iterate!(eki; iterations, show_progress=false, pseudo_stepping)
 
