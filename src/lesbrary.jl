@@ -95,14 +95,30 @@ function lesbrary_ensemble_simulation(observations;
     return simulation
 end
 
+function estimate_η_covariance(output_map, observations::Vector{<:SyntheticObservations})
+
+   @assert length(observations) > 2 "A two-sample covariance matrix has rank one and is therefore singular. 
+                                                   Please increase the number of `observations` to at least 3."
+
+   obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
+   return cov(transpose(obs_maps), corrected=true)
+end
+
+using BlockDiagonals
+
 """
-   estimate_η_covariance(output_map, observations)
+   estimate_η_covariance(output_map, observations::Vector{<:BatchedSyntheticObservations})
 
 """
 function estimate_η_covariance(output_map, observations::Vector{<:BatchedSyntheticObservations})
 
-   @assert length(observations) > 2 "A two-sample covariance matrix has rank one and is therefore singular. 
-                                                   Please increase the number of `observations` to at least 3."
-   obs_maps = hcat([observation_map(output_map, obs) for obs in observations]...)
-   return cov(transpose(obs_maps), corrected=true)
+   Γs = []
+   for cases in zip(getproperty.(observations, :observations)...)
+      push!(Γs, estimate_η_covariance(output_map, [cases...]))
+   end
+
+   FT = eltype(first(Γs))
+   Γs = Matrix{Float64}.(Γs)
+
+   return BlockDiagonal(Γs)
 end
