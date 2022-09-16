@@ -9,33 +9,38 @@ using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covariance_transform
 
 # Specify a directory to which to save the files generated in this script
-dir = joinpath(directory, "emulate_sample_constrained_experimental_unitinterval")
+dir = joinpath(directory, "emulate_sample_constrained_experimental_fixed_prior_transforms_saller_steps_400")
 isdir(dir) || mkdir(dir)
+
+include("emulate_sample_utils.jl")
 
 function problem_transformation(fp::FreeParameters)
     names = fp.names
-    transforms = []
-    for name in names
-        # transform = bounds(name, parameter_set)[1] == 0 ? asℝ₊ : asℝ
-        transform = asℝ
-        push!(transforms, transform)
-    end
-    return as(NamedTuple{Tuple(names)}(transforms))
-end
 
-include("emulate_sample_utils.jl")
+    # transforms = []
+    # for name in names
+        # transform = bounds(name, parameter_set)[1] == 0 ? asℝ₊ : asℝ
+        # transform = asℝ
+    #     transform = as(Real, bounds(name, parameter_set)...)
+    #     push!(transforms, transform)
+    # end
+    # return as(NamedTuple{Tuple(names)}(transforms))
+
+    transforms = NamedTuple{Tuple(names)}([free_parameters.priors[name] for name in names])
+    return transforms
+end
 
 # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
 # iteration `n` by EKI. This will be the training data for 
 # the GP emulator. We will filter out all failed particles.
-n = 10
+n = 5
 X = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(n-1)]...) # constrained
 G = hcat(outputs[0:(n-1)]...)
 # X = hcat([constrained_ensemble_array(eki, iter) for iter in 10:19]...) # constrained
 # G = hcat(outputs[10:19]...)
 
 # Reserve `Nvalidation` samples for validation.
-Nvalidation = 20
+Nvalidation = 10
 
 @info "Performing emulation based on $(size(X, 2) - Nvalidation) samples from the first $n iterations of EKI."
 
@@ -59,7 +64,8 @@ parameter_transformations = problem_transformation(training.free_parameters)
 
 # We will approximately non-dimensionalize the inputs according to mean and variance 
 # computed across all generated training samples.
-transformation = [parameter_transformations.transformations[name] for name in parameter_set.names]
+# transformation = [parameter_transformations.transformations[name] for name in parameter_set.names]
+transformation = [parameter_transformations[name] for name in parameter_set.names]
 X_transformed = mapslices(x -> inverse.(transformation, x), X, dims=1)
 zscore_X = ZScore(mean(X_transformed, dims=2), std(X_transformed, dims=2))
 normalization_transformation = NormalizationTransformation(zscore_X, transformation)
@@ -80,13 +86,13 @@ model_sampling_problem = ModelSamplingProblem(training, normalization_transforma
 # by running parallel chains of MCMC.
 n_chains = N_ensemble
 
-# Length and burn-in length per chain for sampling the true forward map
-chain_length = 200
-burn_in = 10
-
 # Length and burn-in length per chain for sampling the emulated forward map
-chain_length_emulate = 200
-burn_in_emulate = 10
+chain_length_emulate = 2000
+burn_in_emulate = 100
+
+# Length and burn-in length per chain for sampling the true forward map
+chain_length = 500
+burn_in = 100
 
 Nparam = length(parameter_set.names)
 
@@ -107,7 +113,7 @@ for i in ProgressBar(1:k) # forward map index
     # Values of the forward maps of each sample at index `i`
     yᵢ = Ĝ[i, :]
 
-    # Reserve `validation_fraction` representative samples for the emulator
+    # Reserve `Nvalidation` representative samples for the emulator
     # We will sort `yᵢ` and take evenly spaced samples between the upper and
     # lower quartiles so that the samples are representative.
     M = length(yᵢ)
@@ -154,7 +160,15 @@ end
 ### Sample from emulated loss landscape using parallel chains of MCMC
 ###
 
-# function apply_periodic_bounds()
+# parameter_bounds = [bounds(name, parameter_set) for name in free_parameters.names]
+# lower_bounds = getindex.(parameter_bounds, 1)
+# upper_bounds = getindex.(parameter_bounds, 2)
+
+# lower_bounds_transformed = normalize_transform(lower_bounds .+ 0.0001, normalization_transformation)
+# upper_bounds_transformed = normalize_transform(upper_bounds, normalization_transformation)
+
+# # bounder = PeriodicSamplerBounding([lower_bounds_transformed...], [upper_bounds_transformed...])
+bounder = identity
 
 using UnPack
 
@@ -164,10 +178,6 @@ function nll_unscaled(problem::EmulatorSamplingProblem, θ::Vector{<:Real}; norm
 
     θ_transformed = normalized ? θ : [normalize_transform(θ, input_normalization)...] # single column matrix to vector
     θ_untransformed = normalized ? inverse_normalize_transform(θ, input_normalization) : θ
-
-    # if any(θ_untransformed .< 0)
-    #     return Inf
-    # end
 
     results = [predict(θ_transformed) for predict in predicts]
     μ_gps = getindex.(results, 1) # length-k vector
@@ -286,7 +296,7 @@ nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(pr
 cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
 C = Matrix(Hermitian(cov_θθ_all_iters))
 @assert C ≈ cov_θθ_all_iters
-dist_θθ_all_iters = MvNormal(zeros(size(X, 1)), C) ####### NOTE the factor 16
+dist_θθ_all_iters = MvNormal(zeros(size(X, 1)), C ./ 400) ####### NOTE the factor 16
 perturb() = rand(dist_θθ_all_iters)
 proposal(θ) = θ + perturb()
 # seed_X = [perturb() for _ in 1:n_chains] # Where to initialize θ
@@ -295,39 +305,10 @@ proposal(θ) = θ + perturb()
 initial_ensemble = normalize_transform(constrained_ensemble_array(eki, 0), normalization_transformation)
 seed_X = [initial_ensemble[:,j] for j in axes(initial_ensemble)[2]]
 
-chain_X_emulated, chain_nll_emulated = markov_chain(emulator_sampling_problem, proposal, seed_X, chain_length_emulate; burn_in = burn_in_emulate, n_chains)
+chain_X_emulated, chain_nll_emulated = markov_chain(emulator_sampling_problem, proposal, seed_X, chain_length_emulate; burn_in = burn_in_emulate, n_chains, bounder)
 samples = inverse_normalize_transform(hcat(chain_X_emulated...), normalization_transformation)
 # unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 unscaled_chain_X_emulated = [samples[:,j] for j in axes(samples)[2]]
-
-begin
-    emulator_best = unscaled_chain_X_emulated[argmax(chain_nll_emulated)]
-    true_best = unscaled_chain_X[argmax(chain_nll)]
-
-    emulator_mean = [mean(getindex.(unscaled_chain_X_emulated, i)) for i in eachindex(unscaled_chain_X_emulated[1])]
-    true_mean = [mean(getindex.(unscaled_chain_X, i)) for i in eachindex(unscaled_chain_X[1])]
-
-    visualize!(training, emulator_best;
-        field_names = [:u, :v, :b, :e],
-        directory,
-        filename = "realizations_training_best_parameters_emulator_sampling.png"
-    )
-    visualize!(training, true_best;
-        field_names = [:u, :v, :b, :e],
-        directory,
-        filename = "realizations_training_best_parameters_true_sampling.png"
-    )
-    visualize!(training, emulator_mean;
-        field_names = [:u, :v, :b, :e],
-        directory,
-        filename = "realizations_training_mean_parameters_emulator_sampling.png"
-    )
-    visualize!(training, true_mean;
-        field_names = [:u, :v, :b, :e],
-        directory,
-        filename = "realizations_training_mean_parameters_true_sampling.png"
-    )
-end
 
 # using DynamicHMC, LogDensityProblems, Zygote
 # begin
@@ -361,12 +342,40 @@ end
 ## Sample from true eki objective using parallel chains of MCMC
 ##
 
-chain_X, chain_nll = markov_chain(model_sampling_problem, proposal, seed_X, chain_length; burn_in, n_chains)
+chain_X, chain_nll = markov_chain(model_sampling_problem, proposal, seed_X, chain_length; burn_in, n_chains, bounder)
 
 samples = inverse_normalize_transform(hcat(chain_X...), normalization_transformation)
 # unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 unscaled_chain_X = [samples[:,j] for j in axes(samples)[2]]
 
+begin
+    emulator_best = unscaled_chain_X_emulated[argmax(chain_nll_emulated)]
+    true_best = unscaled_chain_X[argmax(chain_nll)]
+
+    emulator_mean = [mean(getindex.(unscaled_chain_X_emulated, i)) for i in eachindex(unscaled_chain_X_emulated[1])]
+    true_mean = [mean(getindex.(unscaled_chain_X, i)) for i in eachindex(unscaled_chain_X[1])]
+
+    visualize!(training, emulator_best;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_training_best_parameters_emulator_sampling.png"
+    )
+    visualize!(training, true_best;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_training_best_parameters_true_sampling.png"
+    )
+    visualize!(training, emulator_mean;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_training_mean_parameters_emulator_sampling.png"
+    )
+    visualize!(training, true_mean;
+        field_names = [:u, :v, :b, :e],
+        directory = dir,
+        filename = "realizations_training_mean_parameters_true_sampling.png"
+    )
+end
 # unscaled_chain_X = load(file)["unscaled_chain_X"]
 # unscaled_chain_X_emulated = load(file)["unscaled_chain_X_emulated"]
 

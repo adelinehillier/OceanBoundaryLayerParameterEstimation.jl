@@ -128,7 +128,7 @@ Returns an `N_params x N_ensemble` array of parameter values for a given iterati
 """
 function constrained_ensemble_array(eki, iteration)
     ensemble = eki.iteration_summaries[iteration].parameters
-    
+
     param_names = keys(ensemble[1])
     N_params = length(param_names)
     N_ensemble = length(ensemble)
@@ -202,13 +202,16 @@ collapse_parameters(θ::NamedTuple) = collect(θ)
 
 using TransformVariables
 using TransformVariables: TransformTuple, ScalarTransform
-using TransformVariables: transform, inverse
 using ParameterEstimocean.Transformations: AbstractNormalization
 
 struct NormalizationTransformation
     normalization::AbstractNormalization
-    transformation::Vector{<:ScalarTransform}
+    transformation::Vector
 end
+
+import TransformVariables: transform, inverse
+inverse(Π::ContinuousUnivariateDistribution, x) = transform_to_unconstrained(Π, x)
+transform(Π::ContinuousUnivariateDistribution, x) = transform_to_constrained(Π, x)
 
 function normalize_transform(θ, nt::NormalizationTransformation)
     θ = θ[:,:]
@@ -277,3 +280,24 @@ function evaluate_objective(problem, θ, Ĝ; Γgp=0)
 
     return (Φ₁, Φ₂, Φ₃)
 end
+
+abstract type AbstractSamplerBounding end
+
+# Scalar input
+function apply_periodic_bounds(x, lower_bound, upper_bound)
+    range = upper_bound - lower_bound
+    if x < lower_bound
+        return maximum([lower_bound, upper_bound - (lower_bound - x)])
+    elseif x > upper_bound
+        return minimum([upper_bound, lower_bound + (x - upper_bound)])
+    else
+        return x
+    end
+end
+
+struct PeriodicSamplerBounding{T} <: AbstractSamplerBounding
+    lower_bounds :: T
+    upper_bounds :: T
+end
+
+(bounder::PeriodicSamplerBounding)(θ::AbstractArray) = apply_periodic_bounds.(θ, bounder.lower_bounds, bounder.upper_bounds)
