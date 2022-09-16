@@ -53,15 +53,15 @@ function markov_link(proposal_X, proposal_nll::Vector, current_X, current_nll::V
     return getindex.(result, 1), getindex.(result, 2)
 end
 
-function proposal_X_nll(nll, proposal, current_X, current_nll::AbstractFloat)
-    proposal_X = proposal(current_X)
+function proposal_X_nll(nll, proposal, current_X, current_nll::AbstractFloat, bounder)
+    proposal_X = bounder(proposal(current_X))
     proposal_nll = nll(proposal_X)
 
     return proposal_X, proposal_nll
 end
 
-function proposal_X_nll(nll, proposal, current_X, current_nll::Vector)
-    proposal_X = proposal.(current_X)
+function proposal_X_nll(nll, proposal, current_X, current_nll::Vector, bounder)
+    proposal_X = bounder.(proposal.(current_X))
     proposal_nll = nll(proposal_X)
 
     return proposal_X, proposal_nll
@@ -87,9 +87,9 @@ and the `chain_length` and `burn_in` period will be divided amongst the `n_chain
 - `chain_X`: The matrix of accepted parameters in the random walk
 - `chain_nll`: The array of errors associated with each step in param chain
 """
-function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_chains=1)
+function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_chains=1, bounder=identity)
 
-    current_X = seed_X # [n_param, n_chains]
+    current_X = bounder.(seed_X) # [n_param, n_chains]
     current_nll = nll(seed_X) # [1, n_chains]
     chain_X = typeof(current_X)[]
     chain_nll = typeof(current_nll)[]
@@ -98,7 +98,7 @@ function markov_chain(nll, proposal, seed_X, chain_length::Int; burn_in=0, n_cha
 
     for i = ProgressBar(1:chain_length-1)
         for chain in n_chains
-            proposal_X, proposal_nll = proposal_X_nll(nll, proposal, current_X, current_nll)
+            proposal_X, proposal_nll = proposal_X_nll(nll, proposal, current_X, current_nll, bounder)
             new_X, new_nll = markov_link(proposal_X, proposal_nll, current_X, current_nll)
             current_X, current_nll = new_X, new_nll # mcmc update
             push!(chain_X, new_X)
