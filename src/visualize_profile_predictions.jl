@@ -31,15 +31,16 @@ function visualize!(ip::InverseProblem, parameters;
 
     observations = ip.observations
 
-    observations = observations isa BatchedSyntheticObservations ? 
-                    observations : BatchedSyntheticObservations(observations)
+    observations = observations isa BatchedSyntheticObservations ? observations : 
+                   observations isa SyntheticObservations ? BatchedSyntheticObservations([observations]) :
+                   BatchedSyntheticObservations(observations)
 
     forward_run!(ip, parameters)
 
     # Vector of SyntheticObservations objects, one for each observation
-    predictions = transpose_model_output(ip.time_series_collector, ip.observations)
+    predictions = transpose_model_output(ip.time_series_collector, observations)
 
-    fig = Figure(resolution = (200*(length(field_names)+1), 200*(length(ip.observations)+1)), font = "CMU Serif")
+    fig = Figure(resolution = (200*(length(field_names)+1), 200*(length(observations)+1)), font = "CMU Serif")
     colors = [:black, :red, :blue]
 
     function empty_plot!(fig_position)
