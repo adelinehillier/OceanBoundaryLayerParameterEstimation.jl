@@ -9,7 +9,7 @@ using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using ParameterEstimocean.Parameters: transform_to_constrained, inverse_covariance_transform
 
 # Specify a directory to which to save the files generated in this script
-dir = joinpath(directory, "emulate_sample_constrained_experimental_fixed_prior_transforms_saller_steps_400")
+dir = joinpath(directory, "emulate_sample_constrained_experimental_fixed_prior_transforms_saller_steps_2500")
 isdir(dir) || mkdir(dir)
 
 include("emulate_sample_utils.jl")
@@ -33,7 +33,7 @@ end
 # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
 # iteration `n` by EKI. This will be the training data for 
 # the GP emulator. We will filter out all failed particles.
-n = 5
+n = 4
 X = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(n-1)]...) # constrained
 G = hcat(outputs[0:(n-1)]...)
 # X = hcat([constrained_ensemble_array(eki, iter) for iter in 10:19]...) # constrained
@@ -87,12 +87,12 @@ model_sampling_problem = ModelSamplingProblem(training, normalization_transforma
 n_chains = N_ensemble
 
 # Length and burn-in length per chain for sampling the emulated forward map
-chain_length_emulate = 2000
-burn_in_emulate = 100
+chain_length_emulate = 10000
+burn_in_emulate = 2000
 
 # Length and burn-in length per chain for sampling the true forward map
-chain_length = 500
-burn_in = 100
+chain_length = 2000
+burn_in = 500
 
 Nparam = length(parameter_set.names)
 
@@ -296,7 +296,7 @@ nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(pr
 cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
 C = Matrix(Hermitian(cov_θθ_all_iters))
 @assert C ≈ cov_θθ_all_iters
-dist_θθ_all_iters = MvNormal(zeros(size(X, 1)), C ./ 400) ####### NOTE the factor 16
+dist_θθ_all_iters = MvNormal(zeros(size(X, 1)), C ./ 2500) ####### NOTE the factor 16
 perturb() = rand(dist_θθ_all_iters)
 proposal(θ) = θ + perturb()
 # seed_X = [perturb() for _ in 1:n_chains] # Where to initialize θ
@@ -402,7 +402,6 @@ begin
     hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
-                                    filename = "mcmc_densities_hist.png",
                                     label = "Emulated",
                                     color = (:blue, 0.8),
                                     type = "hist")
@@ -412,13 +411,13 @@ begin
                                     directory = dir,
                                     filename = "mcmc_densities_hist.png",
                                     label = "True",
+                                    last = true,
                                     color = (:orange, 0.5),
                                     type = "hist")
 
     density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
                                     n_columns,
                                     directory = dir,
-                                    filename = "mcmc_densities_density_textured.png",
                                     label = "Emulated",
                                     show_means = true,
                                     color = (:blue, 0.8),
@@ -433,6 +432,7 @@ begin
                                     show_means = true,
                                     color = (:orange, 0.5),
                                     strokecolor = :orange, strokewidth = 3, strokearound = true,
+                                    last = true,
                                     type = "density",
                                     bandwidths)
 end
