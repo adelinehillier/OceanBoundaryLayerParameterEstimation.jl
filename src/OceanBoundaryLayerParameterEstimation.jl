@@ -17,6 +17,7 @@ export
     # closure_parameters.jl
     bounds,
     default,
+    collapse_parameters,
     ParameterSet,
     named_tuple_map,
     CATKEParametersRiDependent,
