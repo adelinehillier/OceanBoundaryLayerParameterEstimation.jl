@@ -16,6 +16,7 @@ function plot_mcmc_densities!(fig, axes, chain_X, parameter_names;
                                 type = "hist",
                                 show_means = false,
                                 bandwidths = nothing,
+                                last = false,
                                 kwargs...)
     @assert type in ["hist", "density"]
 
@@ -23,23 +24,30 @@ function plot_mcmc_densities!(fig, axes, chain_X, parameter_names;
     for (i, param_name) in enumerate(parameter_names)
         samples = getindex.(chain_X, i)
 
+        σ = std(samples)
+        μ = mean(samples)
+
         ax = axes[i+1]
         if type == "hist"
             hist!(ax, samples; label, bins = 50, color, normalization = :pdf, kwargs...)
+            xlims!(ax, 0.0, min(μ + 3σ, max(samples...)))
         elseif type == "density"
             bandwidth = isnothing(bandwidths) ? sqrt(var(samples))/15 : bandwidths[i]
             density!(ax, samples; label, color, bandwidth, kwargs...)
+            xlims!(ax, 0.0, min(μ + 3σ, max(samples...)))
         end
 
         push!(sample_means, mean(samples))
-        show_means && vlines!(ax,  [mean(samples)]; color=(color[1], 1.0), label="Sample mean", linestyle=nothing, linewidth=5)
+        show_means && vlines!(ax, [mean(samples)]; color=(color[1], 1.0), label="Sample mean", linestyle=nothing, linewidth=5)
     end
 
-    fig[1,1] = Legend(fig, axes[end], nothing; framevisible=true, 
-                                                            tellheight = false,
-                                                            tellwidth = false,
-                                                            nbanks = 2)
-    save(joinpath(directory, filename), fig)
+    if last
+        fig[1,1] = Legend(fig, axes[end], nothing; framevisible=true, 
+                                                                tellheight = false,
+                                                                tellwidth = false,
+                                                                nbanks = 2)
+        save(joinpath(directory, filename), fig)
+    end
 
     return sample_means
 end
