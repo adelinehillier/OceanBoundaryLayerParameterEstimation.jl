@@ -130,9 +130,15 @@ eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resam
 
 outputs = OffsetArray([], -1)
 for step = ProgressBar(1:iterations)
-    pseudo_step!(eki; pseudo_stepping)
     push!(outputs, deepcopy(eki.forward_map_output))
+    pseudo_step!(eki; pseudo_stepping)
 end
+
+# d = wall_vertical_distanceᶜᶜᶠ(i, j, k, grid)
+# ℓᵇ = Cᵇ * buoyancy_mixing_lengthᶜᶜᶠ(i, j, k, grid, e, tracers, buoyancy)
+# ℓˢ = Cˢ * shear_mixing_lengthᶜᶜᶠ(i, j, k, grid, e, velocities, tracers, buoyancy)
+
+# Not just parameter calibration but parameter selection.
 
 visualize!(training, eki.iteration_summaries[end].ensemble_mean;
     field_names = [:u, :v, :b, :e],

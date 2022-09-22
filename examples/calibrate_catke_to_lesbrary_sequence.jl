@@ -20,7 +20,7 @@ using ParameterEstimocean.Transformations: Transformation
 Random.seed!(1234)
 
 Nz = 32
-N_ensemble = 50
+N_ensemble = 128
 architecture = CPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
@@ -62,7 +62,7 @@ begin
     transformation = (b = Transformation(normalization=ZScore()),
                       u = Transformation(normalization=ZScore()),
                       v = Transformation(normalization=ZScore()),
-                      e = Transformation(normalization=RescaledZScore(0.05), space=SpaceIndices(; z=16:32)),
+                      e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
                       )
 
     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
@@ -80,7 +80,8 @@ covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 function build_prior(name)
     b = bounds(name, parameter_set)
-    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
+    return ScaledLogitNormal(bounds=(0,1))
     # # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
     # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
     # μ = 0
@@ -145,9 +146,9 @@ function inverse_problem_sequence(path_fn, N_ensemble, times)
     return ips
 end
 
-training_times = [0.0days, 0.5days, 1.0days, 2.0days, 4.0days]
-validation_times = [0.0days, 0.25days, 0.5days, 1.0days, 2.0days]
-testing_times = [0.0days, 1.0days, 3.0days, 6.0days]
+training_times = [0.25days, 0.5days, 1.0days, 2.0days, 4.0days]
+validation_times = [0.25days, 0.5days, 1.0days, 2.0days]
+testing_times = [0.25days, 1.0days, 3.0days, 6.0days]
 
 training = inverse_problem_sequence(four_day_suite_path_2m, N_ensemble, training_times)[1]
 validation = inverse_problem_sequence(two_day_suite_path_2m, N_ensemble, validation_times)[1]
@@ -180,7 +181,8 @@ function estimate_noise_covariance(data_path_fns, times; case = 1)
     return noise_covariance  
 end
 
-noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m], training_times; case = 1)
+dp = [four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m]
+noise_covariance = estimate_noise_covariance(dp, training_times; case = 1)
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
@@ -202,6 +204,27 @@ begin
 
     final_params = eki.iteration_summaries[end].ensemble_mean
 
+    begin
+        times = training_times; case = 1
+        
+        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
+    
+        parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]
+        # parameter_labels = ["Model(Θ₀)", "Model(θ̅₅)"]
+        # parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
+        # parameter_labels = ["Φ(Θ₀)", "Φ(Θ₅)"]
+
+        using LaTeXStrings
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\Theta_5)"]
+        # observation_label = "Φₗₑₛ"
+        observation_label = L"\Phi_{LES}"
+
+        visualize!(training, parameters; parameter_labels, 
+                                         field_names = [:b, :e], 
+                                         observation_label,
+                                         multi_res_observations=obsns_various_resolutions)
+    end
+    
     visualize!(training, final_params;
         field_names = [:u, :v, :b, :e],
         directory,
@@ -270,7 +293,7 @@ plot_pairwise_ensembles!(eki, directory)
 ### CES
 ###
 
-include("emulate_sample_constrained.jl")
+# include("emulate_sample_constrained.jl")
 
 ###
 ### Sensitivity analysis

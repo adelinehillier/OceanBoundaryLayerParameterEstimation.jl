@@ -180,9 +180,9 @@ begin
     outputs = OffsetArray([], -1)
     for step = ProgressBar(1:iterations)
         convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
-        # pseudo_stepping = ConstantConvergence(convergence_ratio)        
+        # pseudo_stepping = ConstantConvergence(convergence_ratio)       
+        push!(outputs, deepcopy(eki.forward_map_output)) 
         pseudo_step!(eki; pseudo_stepping)
-        push!(outputs, deepcopy(eki.forward_map_output))
     end
 
     final_params = eki.iteration_summaries[end].ensemble_mean

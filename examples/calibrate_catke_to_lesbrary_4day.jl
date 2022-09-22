@@ -20,14 +20,14 @@ using ParameterEstimocean.Transformations: Transformation
 Random.seed!(1234)
 
 Nz = 32
-N_ensemble = 128
+N_ensemble = 200
 architecture = CPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_wider_lognormal/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_logit_normal_ensemble_size_50/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -86,7 +86,7 @@ function build_prior(name)
     # μ = 0
     # σ = 0.9
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
-    return lognormal(;mean=0.5, std=0.5)
+    return lognormal(; mean=0.5, std=0.5)
     # return LogNormal(0, 1.2)
 end
 
@@ -108,9 +108,9 @@ function inverse_problem(path_fn, N_ensemble, times)
     return ip
 end
 
-training_times = [1.0day, 1.75days, 2.5days, 3.25days, 4.0days]
+training_times = [0.5days, 1.75days, 2.5days, 3.25days, 4.0days]
 validation_times = [0.5days, 1.0days, 1.5days, 2.0days]
-testing_times = [1.0days, 3.0days, 6.0days]
+testing_times = [0.5days, 3.0days, 6.0days]
 
 training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times)
 validation = inverse_problem(two_day_suite_path_2m, N_ensemble, validation_times)
@@ -133,7 +133,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 20
+iterations = 10
 
 function estimate_noise_covariance(data_path_fns, times)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
@@ -144,12 +144,16 @@ function estimate_noise_covariance(data_path_fns, times)
     return noise_covariance  
 end
 
-noise_covariance = estimate_noise_covariance([four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m], training_times)
+dp = [four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m]
+noise_covariance = estimate_noise_covariance(dp, training_times)
+
+dp_validation = [two_day_suite_path_1m, two_day_suite_path_2m, two_day_suite_path_4m]
+dp_testing = [six_day_suite_path_1m, six_day_suite_path_2m, six_day_suite_path_4m]
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
-pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
-# pseudo_stepping = Iglesias2021()
+# pseudo_stepping = Kovachki2018InitialConvergenceRatio(; initial_convergence_ratio=0.2)
+pseudo_stepping = Iglesias2021()
 # eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
 # final_params = iterate!(eki; iterations, show_progress=false, pseudo_stepping)
 
@@ -158,28 +162,65 @@ begin
 
     outputs = OffsetArray([], -1)
     for step = ProgressBar(1:iterations)
-        convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
-        # pseudo_stepping = ConstantConvergence(convergence_ratio)        
+        # convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
+        # pseudo_stepping = ConstantConvergence(convergence_ratio)       
+        push!(outputs, deepcopy(eki.forward_map_output)) 
         pseudo_step!(eki; pseudo_stepping)
-        push!(outputs, deepcopy(eki.forward_map_output))
     end
 
     final_params = eki.iteration_summaries[end].ensemble_mean
 
-    visualize!(training, final_params;
-        field_names = [:u, :v, :b, :e],
+    obsns_various_resolutions_training = [SyntheticObservationsBatch(p, training_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp]
+    obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
+    obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
+
+    visualize!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]; 
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\Theta_5)"],
+        observation_label = L"\Phi_{LES}",
+        multi_res_observations = obsns_various_resolutions_training,
         directory,
-        filename = "realizations_training_iglesias2021.png"
+        filename = "realizations_training_ensemble.png")
+
+    visualize!(training, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        observation_label = L"\Phi_{LES}",
+        multi_res_observations = obsns_various_resolutions_training,
+        directory,
+        filename = "realizations_training.png"
     )
-    visualize!(validation, final_params;
-        field_names = [:u, :v, :b, :e],
+    visualize!(training, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        observation_label = L"\Phi_{LES}",
         directory,
-        filename = "realizations_validation_iglesias2021.png"
+        filename = "realizations_training_deterministic_observation.png"
     )
-    visualize!(testing, final_params;
-        field_names = [:u, :v, :b, :e],
+    visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        observation_label = L"\Phi_{LES}",
         directory,
-        filename = "realizations_testing_iglesias2021.png"
+        multi_res_observations = obsns_various_resolutions_validation,
+        filename = "realizations_validation.png"
+    )
+    visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        observation_label = L"\Phi_{LES}",
+        directory,
+        multi_res_observations = obsns_various_resolutions_validation,
+        filename = "realizations_validation_deterministic_observation.png"
+    )
+    visualize!(testing, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        observation_label = L"\Phi_{LES}",
+        directory,
+        multi_res_observations = obsns_various_resolutions_testing,
+        filename = "realizations_testing.png"
+    )
+    visualize!(testing, [eki.iteration_summaries[0].parameters, final_params];
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\theta_5)"],
+        observation_label = L"\Phi_{LES}",
+        directory,
+        multi_res_observations = obsns_various_resolutions_testing,
+        filename = "realizations_testing_deterministic_observation.png"
     )
 
     θ̅₀ = eki.iteration_summaries[0].ensemble_mean
@@ -204,6 +245,13 @@ begin
 
     save(joinpath(directory, "superimposed_forward_map_output.png"), f)
 end
+
+# y_truth = Array(NCDataset(data_filepath).group["reference"]["y_full"]) #ndata
+# truth_cov = Array(NCDataset(data_filepath).group["reference"]["Gamma_full"]) #ndata x ndata
+# # Option (i) get data from NCDataset else get from jld2 files.
+# output_mat = Array(NCDataset(data_filepath).group["particle_diags"]["g_full"]) #nens x ndata x nit
+# input_mat = Array(NCDataset(data_filepath).group["particle_diags"]["u"]) #nens x nparam x nit
+# input_constrained_mat = Array(NCDataset(data_filepath).group["particle_diags"]["phi"]) #nens x nparam x nit
 
 write(o, "Final ensemble mean: $(final_params) \n")
 close(o)
