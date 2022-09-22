@@ -180,3 +180,9 @@ CATKEParametersRiIndependentConvectiveAdjustment = ParameterSet{CATKEVerticalDif
 ri_based_params = Set([:ν₀, :κ₀, :Ri₀ν, :Ri₀κ, :Riᵟν, :Riᵟκ])
 
 RiBasedParameterSet = ParameterSet{RiBasedVerticalDiffusivity}(ri_based_params)
+
+collapse_parameters(θ::AbstractVector{<:AbstractVector}) = hcat(θ...)
+collapse_parameters(θ::AbstractMatrix) = θ
+collapse_parameters(θ::AbstractVector{<:Real}) = θ[:,:]
+collapse_parameters(θ::AbstractVector{<:NamedTuple}) = collapse_parameters(collapse_parameters.(θ))
+collapse_parameters(θ::NamedTuple) = collect(θ)

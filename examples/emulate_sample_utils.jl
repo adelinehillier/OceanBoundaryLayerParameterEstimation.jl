@@ -194,12 +194,6 @@ end
 prior_means(fp::FreeParameters) = [mean.(values(fp.priors))...]
 prior_variances(fp::FreeParameters) = [var.(values(fp.priors))...]
 
-collapse_parameters(θ::AbstractVector{<:AbstractVector}) = hcat(θ...)
-collapse_parameters(θ::AbstractMatrix) = θ
-collapse_parameters(θ::Vector{<:Real}) = θ[:,:]
-collapse_parameters(θ::AbstractVector{<:NamedTuple}) = collapse_parameters.(θ)
-collapse_parameters(θ::NamedTuple) = collect(θ)
-
 using TransformVariables
 using TransformVariables: TransformTuple, ScalarTransform
 using ParameterEstimocean.Transformations: AbstractNormalization
