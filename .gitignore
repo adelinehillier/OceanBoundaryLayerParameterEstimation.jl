@@ -30,3 +30,4 @@ Manifest.toml
 *.html
 *.css
 *.txt
+examples/archive/
