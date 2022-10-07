@@ -302,7 +302,7 @@ save(file, Dict("unscaled_chain_X" => unscaled_chain_X,
 
 begin 
     n_columns = 3
-    hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
+    hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, free_parameters.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_hist.png",
@@ -319,7 +319,7 @@ begin
     std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
     bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
 
-    density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
+    density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, free_parameters.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_density_textured.png",
@@ -328,7 +328,7 @@ begin
                                     color = (:blue, 0.8),
                                     type = "density")
 
-    plot_mcmc_densities!(hist_fig, hist_axes, unscaled_chain_X, parameter_set.names; 
+    plot_mcmc_densities!(hist_fig, hist_axes, unscaled_chain_X, free_parameters.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_hist.png",
@@ -336,7 +336,7 @@ begin
                                     color = (:orange, 0.5),
                                     type = "hist")
 
-    plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
+    plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, free_parameters.names; 
                                     n_columns,
                                     directory = dir,
                                     filename = "mcmc_densities_density_textured.png",
@@ -347,10 +347,10 @@ begin
                                     type = "density")
 end
 
-Nparam = length(parameter_set.names)
+Nparam = length(free_parameters.names)
 
 begin
-    xticks=(collect(1:Nparam), string.(collect(parameter_set.names)))
+    xticks=(collect(1:Nparam), string.(collect(free_parameters.names)))
     xticklabelrotation = pi/2
 
     fig = Figure(resolution = (2000, 600), fontsize=28)

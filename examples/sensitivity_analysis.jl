@@ -3,7 +3,7 @@ using CairoMakie
 using GlobalSensitivity
 
 Nsamples = 2000
-Nparams = length(parameter_set.names)
+Nparams = length(free_parameters.names)
 total_samples = Nsamples * (Nparams + 2)
 @show total_samples
 
@@ -17,8 +17,8 @@ lb = means .- 2*stds
 ub = means .+ 2*stds
 
 # Generate design matrices where rows are samples
-# @assert parameter_set.names == training.free_parameters.names
-# bds = [bounds(name, parameter_set) for name in parameter_set.names]
+# @assert free_parameters.names == training.free_parameters.names
+# bds = [bounds(name, parameter_set) for name in free_parameters.names]
 # lb = getindex.(bds, 1)
 # ub = getindex.(bds, 2)
 sampler = SobolSample()
@@ -65,7 +65,7 @@ A,B = QuasiMonteCarlo.generate_design_matrices(Nsamples,lb,ub,sampler,2)
 #     begin
 #         # Figure and Axis
 #         fig = Figure(fontsize=24, resolution=(1200,400))
-#         ax = Axis(fig[1,1], xticks = (1:Nparams, string.(collect(parameter_set.names))),
+#         ax = Axis(fig[1,1], xticks = (1:Nparams, string.(collect(free_parameters.names))),
 #                 ylabel = "Sensitivity Indices",
 #                 xlabel = "Parameter",
 #                 xticklabelrotation = pi/2)
@@ -129,7 +129,7 @@ begin
     begin
         # Figure and Axis
         fig = Figure(fontsize=24, resolution=(1200,400))
-        ax = Axis(fig[1,1], xticks = (1:Nparams, string.(collect(parameter_set.names))),
+        ax = Axis(fig[1,1], xticks = (1:Nparams, string.(collect(free_parameters.names))),
                 ylabel = "Sensitivity Indices",
                 xlabel = "Parameter",
                 xticklabelrotation = pi/2)

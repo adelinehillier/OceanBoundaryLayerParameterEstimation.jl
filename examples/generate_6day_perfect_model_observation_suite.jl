@@ -162,7 +162,7 @@ begin
 end
 
 build_prior(name) = ScaledLogitNormal(bounds=bounds(name, parameter_set))
-free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
+free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_prior))
 
 function inverse_problem(Nensemble, times)
     observations = SyntheticObservationsBatch(path_fn, transformation, times, Nz; datadep=false, architecture)

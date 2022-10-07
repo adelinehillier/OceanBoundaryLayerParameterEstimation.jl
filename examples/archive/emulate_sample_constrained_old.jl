@@ -176,7 +176,7 @@ unscaled_chain_X_emulated = collect.(transform_to_constrained(eki.inverse_proble
 # unscaled_chain_X_emulated = [samples[:,j] for j in 1:size(samples, 2)]
 
 n_columns = 3
-density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_set.names; 
+density_fig, density_axes = plot_mcmc_densities(unscaled_chain_X_emulated, free_parameters.names; 
                                 n_columns,
                                 directory = dir,
                                 filename = "mcmc_densities.png",
@@ -222,7 +222,7 @@ denormalize!(samples, zscore_X)
 unscaled_chain_X = collect.(transform_to_constrained(eki.inverse_problem.free_parameters.priors, samples))
 # unscaled_chain_X = [samples[:,j] for j in 1:size(samples, 2)]
 
-plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, parameter_set.names; 
+plot_mcmc_densities!(density_fig, density_axes, unscaled_chain_X, free_parameters.names; 
                                 n_columns,
                                 directory = dir,
                                 filename = "mcmc_densities.png",
