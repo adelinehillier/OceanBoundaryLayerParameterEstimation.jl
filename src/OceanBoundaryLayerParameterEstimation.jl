@@ -43,6 +43,7 @@ export
 
     # visualize_profile_predictions.jl
     visualize!,
+    visualize_vertical!,
     open_output_file
 
 include("lesbrary.jl")
