@@ -6,7 +6,7 @@ import Distributions: Uniform
 """
 acceptance criteria for Metropolis-Hastings
 # Definition 
-accept(Δ) = log(rand(Uniform(0, 1))) < Δ
+accept(Δ) = rand(Uniform(0, 1)) < exp(Δ)
 # Arguments
 - `Δ`: (scalar): change in negative log-likelihood 
 # Output
@@ -14,7 +14,7 @@ accept(Δ) = log(rand(Uniform(0, 1))) < Δ
 # Notes
 Always go downhill but sometimes go uphill
 """
-accept(Δ) = log(rand(Uniform(0, 1))) < Δ
+accept(Δ) = rand(Uniform(0, 1)) < exp(Δ)
 
 """
 markov_link(nll, proposal, current_X, current_nll)
@@ -22,7 +22,7 @@ markov_link(nll, proposal, current_X, current_nll)
 - Takes a single step in the random walk markov chain monte carlo algorithm and outputs proposal parameters, 
   new parameters, and the evaluate of the loss function
 # Arguments
-- `nll`: The negative log-likelihood function. In the absence of priors this becomes a loss function
+- `nll`: The negative log-likelihood function
 - `proposal`: (function), determines the proposal step
 - `current_X`: (array), current parameter
 - `current_nll`: (scalar), proposal_nll = nll(X). The value of negative log-likelihood of the current parameter
@@ -72,7 +72,7 @@ markov_chain(nll, proposal, seed_X, chain_length; random_seed = 1234)
 # Description
 - A random walk that computes the posterior distribution
 # Arguments
-- `nll`: The negative log-likelihood function. In the absence of priors this becomes a loss function
+- `nll`: The negative log-likelihood function.
 - `proposal`: (function), proposal function for MCMC
 - `seed_X`: (Array), initial parameter values
 - `chain_length`: (Int) number of markov chain monte carlo steps
