@@ -113,7 +113,11 @@ ri_based_parameter_guide = Dict(:ν₀ => (name = "base viscosity", latex = L"\n
                         :Ri₀ν => (name = "Ri viscosity", latex = L"Ri_0\nu", default = -0.5, bounds = (-20.0, 20.0)), 
                         :Ri₀κ => (name = "Ri diffusivity", latex = L"Ri_0\kappa", default = -0.5, bounds = (-20.0, 20.0)), 
                         :Riᵟν => (name = "Ri delta viscosity", latex = L"Ri^{\delta}\nu", default = 1.0, bounds = (0.0, 10.0)), 
-                        :Riᵟκ => (name = "Ri delta diffusivity", latex = L"Ri^{\delta}\kappa", default = 1.0, bounds = (0.0, 3.0)), 
+                        :Riᵟκ => (name = "Ri delta diffusivity", latex = L"Ri^{\delta}\kappa", default = 1.0, bounds = (0.0, 3.0))
+)
+
+conv_adj_based_parameter_guide = Dict(:convective_κz => (name = "base diffusivity", latex = L"convective_\kappa_z", default = 0.01, bounds = (0.1, 10.0)), 
+                        :background_κz => (name = "background diffusivity", latex = L"background \kappa_z", default = 0.1, bounds = (0.0, 2e-3)), 
 )
 
 """
@@ -134,6 +138,7 @@ end
 
 parameter_guide(::ParameterSet{<:CATKEVerticalDiffusivity}) = catke_parameter_guide
 parameter_guide(::ParameterSet{<:RiBasedVerticalDiffusivity}) = ri_based_parameter_guide
+parameter_guide(::ParameterSet{<:ConvectiveAdjustmentVerticalDiffusivity}) = conv_adj_based_parameter_guide
 
 bounds(name, parameter_set) = parameter_guide(parameter_set)[name].bounds
 default(name, parameter_set) = parameter_guide(parameter_set)[name].default
