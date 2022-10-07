@@ -1,3 +1,5 @@
+using UnPack
+
 """
     truncate_forward_map_to_length_k_uncorrelated_points(k) 
 
@@ -94,32 +96,6 @@ end
 # lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
 # lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
 # axislegend(ax)
-
-
-begin
-    θ̅₀ = eki.iteration_summaries[0].ensemble_mean
-    θ̅₁₀ = final_params
-    Gb = forward_map(eki.inverse_problem, [θ̅₀, θ̅₁₀])[:,1:2]
-    G₀ = Gb[:,1]
-    G₁₀ = Gb[:,2]
-    truth = eki.mapped_observations
-    x_axis = [1:length(truth) ...]
-
-    f = CairoMakie.Figure(resolution=(2500,1000), fontsize=48)
-    ax = Axis(f[1,1])
-    lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
-    lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
-    axislegend(ax)
-    hidexdecorations!(ax)
-
-    ax2 = Axis(f[2,1])
-    lines!(ax2, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
-    lines!(ax2, x_axis, G₁₀; label = "G(θ̅₁₀)", linewidth=4, color=:black)
-    axislegend(ax2)
-
-    save(joinpath(dir, "superimposed_forward_map_output.png"), f)
-end
-
 
 """
 constrained_ensemble_array(eki, iteration)
@@ -295,3 +271,158 @@ struct PeriodicSamplerBounding{T} <: AbstractSamplerBounding
 end
 
 (bounder::PeriodicSamplerBounding)(θ::AbstractArray) = apply_periodic_bounds.(θ, bounder.lower_bounds, bounder.upper_bounds)
+
+function problem_transformation(fp::FreeParameters; type="priors")
+    names = fp.names
+
+    transforms = []
+    for name in names
+        type_to_transform = Dict("physical" => bounds(name, parameter_set)[1] >= 0 ? asℝ₊ : asℝ, 
+                                 "identity" => asℝ,
+                                 "priors" => fp.priors[name])
+        if type ∈ keys(type_to_transform)
+            transform = type_to_transform[type]
+        else
+            @warn "We do not recognize the variable transformation type '$(type)'. Defaulting to 'priors'."
+        end
+        push!(transforms, transform)
+    end
+    parameter_transformations = as(NamedTuple{Tuple(names)}(transforms))
+
+    if type == "priors"
+        transforms = [parameter_transformations[name] for name in names]
+    else 
+        transforms = [parameter_transformations.transformations[name] for name in names]
+    end
+    return transforms
+end
+
+"""
+emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+
+# Arguments
+- `X`: (number of parameters) x (number of training samples) array of training samples.
+- `Ĝ`: (output size) x (number of training samples) array of targets.
+- `kernel`: GaussianProcesses.jl kernel
+# Returns
+- `predicts`: (output size)-length vector of functions that map parameters to the corresponding coordinate in the output.
+"""
+function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+    @info "Training $k gaussian processes for the emulator."
+    validation_results=[]
+    predicts=[]
+    for i in ProgressBar(1:k) # forward map index
+
+        # Values of the forward maps of each sample at index `i`
+        yᵢ = Ĝ[i, :]
+
+        if Nvalidation > 0
+            # Reserve `Nvalidation` representative samples for the emulator
+            # We will sort `yᵢ` and take evenly spaced samples between the upper and
+            # lower quartiles so that the samples are representative.
+            M = length(yᵢ)
+            lq = Int(round(M/5))
+            uq = lq*4
+            decimal_indices = range(lq, uq, length = Nvalidation)
+            evenly_spaced_samples = Int.(round.(decimal_indices))
+            emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
+            not_emulator_validation_indices = [i for i in 1:M if !(i in emulator_validation_indices)]
+            X_validation = X[:, emulator_validation_indices]
+            yᵢ_validation = yᵢ[emulator_validation_indices]
+        else
+            not_emulator_validation_indices = axes(X)[2]
+        end
+
+        predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], 
+                                              yᵢ[not_emulator_validation_indices]; 
+                                              standardize_X = false, 
+                                              zscore_limit = nothing, 
+                                              kernel = deepcopy(kernel))
+        push!(predicts, predict)
+
+        if Nvalidation > 0
+            ŷᵢ_validation, Γgp_validation = predict(X_validation)
+            push!(validation_results, (yᵢ_validation, ŷᵢ_validation, diag(Γgp_validation)))
+        end
+    end
+
+    if Nvalidation > 0
+        n_columns = 5
+        N_axes = k
+        n_rows = Int(ceil(N_axes / n_columns))
+        fig = Figure(resolution = (300n_columns, 350n_rows), fontsize = 8)
+        ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
+        for (i, result) in enumerate(validation_results)
+    
+            yᵢ_validation, ŷᵢ_validation, Γgp_validation = result
+            r = round(Statistics.cor(yᵢ_validation, ŷᵢ_validation); sigdigits=2)
+            @info "Pearson R for predictions on reserved subset of training points for $(i)th entry in the transformed forward map output : $r"
+            ax = Axis(fig[ax_coords[i]...], xlabel = "True", 
+                                            xticks = LinearTicks(2),
+                                            ylabel = "Predicted",
+                                            title = "Index $i. Pearson R: $r")
+    
+            scatter!(ax, yᵢ_validation, ŷᵢ_validation)
+            lines!(ax, yᵢ_validation, yᵢ_validation; color=(:black, 0.5), linewidth=3)
+            errorbars!(yᵢ_validation, ŷᵢ_validation, sqrt.(Γgp_validation), color = :red, linewidth=2)
+            save(joinpath(dir, "emulator_validation_performance_linear_linear.png"), fig)
+        end
+    end
+
+    return predicts
+end
+
+function nll_unscaled(problem::EmulatorSamplingProblem, θ::Vector{<:Real}; normalized = true)
+
+    @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+
+    θ_transformed = normalized ? θ : [normalize_transform(θ, input_normalization)...] # single column matrix to vector
+    θ_untransformed = normalized ? inverse_normalize_transform(θ, input_normalization) : θ
+
+    results = [predict(θ_transformed) for predict in predicts]
+    μ_gps = getindex.(results, 1) # length-k vector
+    Γ_gps = getindex.(results, 2) # length-k vector
+
+    Γgp = [maximum([1e-10, v]) for v in Γ_gps] # prevent zero or infinitesimal negative values (numerical error)
+    Γgp = diagm(Γgp)
+
+    return evaluate_objective(problem, θ_untransformed, μ_gps; Γgp)
+end
+
+function nll_unscaled(problem::EmulatorSamplingProblem, θ; normalized = true)
+
+    θ = collapse_parameters(θ)
+        
+    Φs = []
+    for j in axes(θ)[2]
+        push!(Φs, nll_unscaled(problem, θ[:, j]; normalized))
+    end
+
+    return Φs
+end
+
+function nll_unscaled(problem::ModelSamplingProblem, θ; normalized = true)
+
+    @unpack inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+
+    θ = collapse_parameters(θ)
+
+    θ = normalized ? inverse_normalize_transform(θ, input_normalization) : θ
+
+    G = forward_map_unlimited(inverse_problem, θ)
+    Ĝ = project_decorrelated(G)
+
+    Φs = []
+    for j in axes(θ)[2]
+
+        # if any(θ[:, j] .< 0)
+        #     push!(Φs, Inf)
+        # else
+            push!(Φs, evaluate_objective(problem, θ[:, j], Ĝ[:, j]))
+        # end
+    end
+
+    # Φs = [evaluate_objective(problem, θ[:, j], Ĝ[:, j]) for j in axes(θ)[2]]
+
+    return Φs
+end
