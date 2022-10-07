@@ -27,7 +27,7 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_logit_normal_ensemble_size_50/"
+directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_logit_normal_actually_ensemble_size_200/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -79,21 +79,18 @@ transform_to_constrained(Π::LogNormal, X) = exp(X)
 covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 function build_prior(name)
-    # b = bounds(name, parameter_set)
-    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
-    # # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
+    b = bounds(name, parameter_set)
+    prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
     # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
-    # μ = 0
-    # σ = 0.9
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
-    return lognormal(; mean=0.5, std=0.5)
+    # return lognormal(; mean=0.5, std=0.5)
     # return LogNormal(0, 1.2)
 end
 
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
 # stdv = sqrt((exp(σ^2)-1)*exp(2μ+σ^2))
 
-free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
+free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_prior))
 
 #####
 ##### Build the Inverse Problem
@@ -125,7 +122,7 @@ write(o, "Validation inverse problem: $(summary(validation)) \n")
 write(o, "Testing inverse problem: $(summary(testing)) \n")
 
 # y = observation_map(training);
-# θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
+# θ = named_tuple_map(free_parameters.names, name -> default(name, parameter_set))
 # G = forward_map(training, [θ])
 # zc = [mapslices(norm, G .- y, dims = 1)...]
 
@@ -174,51 +171,48 @@ begin
     obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
     obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
 
-    visualize!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]; 
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\Theta_5)"],
-        observation_label = L"\Phi_{LES}",
+    parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
+    observation_label = "Observation"
+
+    visualize_vertical!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]; 
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_training,
-        directory,
+        plot_internals = true,
+        internals_to_plot = 2,    
+        filename = "internals_training.png")
+
+    visualize!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]; 
+        parameter_labels, observation_label, directory,
+        multi_res_observations = obsns_various_resolutions_training,
         filename = "realizations_training_ensemble.png")
 
     visualize!(training, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
-        observation_label = L"\Phi_{LES}",
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_training,
-        directory,
         filename = "realizations_training.png"
     )
     visualize!(training, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
+        parameter_labels, observation_label, directory,
         observation_label = L"\Phi_{LES}",
-        directory,
         filename = "realizations_training_deterministic_observation.png"
     )
     visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
-        observation_label = L"\Phi_{LES}",
-        directory,
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_validation,
         filename = "realizations_validation.png"
     )
     visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
-        observation_label = L"\Phi_{LES}",
-        directory,
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_validation,
         filename = "realizations_validation_deterministic_observation.png"
     )
     visualize!(testing, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\overbar{\theta}_5)"],
-        observation_label = L"\Phi_{LES}",
-        directory,
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_testing,
         filename = "realizations_testing.png"
     )
     visualize!(testing, [eki.iteration_summaries[0].parameters, final_params];
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\theta_5)"],
-        observation_label = L"\Phi_{LES}",
-        directory,
+        parameter_labels, observation_label, directory,
         multi_res_observations = obsns_various_resolutions_testing,
         filename = "realizations_testing_deterministic_observation.png"
     )

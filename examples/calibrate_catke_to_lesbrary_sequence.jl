@@ -20,53 +20,20 @@ using ParameterEstimocean.Transformations: Transformation
 Random.seed!(1234)
 
 Nz = 32
-N_ensemble = 128
+# N_ensemble = 128
+N_ensemble = 10
 architecture = CPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_obs1__logit_normal_ensemble_size_50_take2/"
+directory = "calibrate_catke_to_lesbrary_obs1__logit_normal_ensemble_size_10_take3_lognormal_priors/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
 o = open_output_file(dir)
 write(o, "$description \n Δt: $Δt \n Nz: $Nz \n N_ensemble: $N_ensemble \n Prior type: $prior_type \n")
-
-#####
-##### Set up ensemble model
-#####
-
-begin
-    field_names = (:b, :u, :v, :e)
-    fields_by_case = Dict("free_convection" => (:b, :e),
-                          "weak_wind_strong_cooling" => (:b, :u, :v, :e),
-                          "strong_wind_weak_cooling" => (:b, :u, :v, :e),
-                          "strong_wind" => (:b, :u, :v, :e),
-                          "strong_wind_no_rotation" => (:b, :u, :e)
-                         )
-
-    parameter_set = CATKEParametersRiDependent
-
-    parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
-                    :Cˢc,   :Cˢu,  :Cˢe,
-                    :Cᵇc,   :Cᵇu,  :Cᵇe,
-                    :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
-                    :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
-                    :CᴷRiᶜ, :CᴷRiʷ)
-
-    parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
-                                nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
-
-    transformation = (b = Transformation(normalization=ZScore()),
-                      u = Transformation(normalization=ZScore()),
-                      v = Transformation(normalization=ZScore()),
-                      e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
-                      )
-
-    closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
-end
 
 #####
 ##### Build free parameters
@@ -80,21 +47,81 @@ covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 function build_prior(name)
     b = bounds(name, parameter_set)
+
     # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
-    return ScaledLogitNormal(bounds=(0,1))
-    # # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
+    # return ScaledLogitNormal(bounds=(0,1))
+    
+    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
     # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
     # μ = 0
     # σ = 0.9
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
-    # return lognormal(; mean=0.5, std=0.5)
+    return lognormal(; mean=0.5, std=0.5)
     # return LogNormal(0, 1.2)
 end
 
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
 # stdv = sqrt((exp(σ^2)-1)*exp(2μ+σ^2))
 
-free_parameters = FreeParameters(named_tuple_map(parameter_set.names, build_prior))
+#####
+##### Set up ensemble model
+#####
+
+# begin
+#     field_names = (:b, :u, :v, :e)
+#     fields_by_case = Dict("free_convection" => (:b, :e),
+#                           "weak_wind_strong_cooling" => (:b, :u, :v, :e),
+#                           "strong_wind_weak_cooling" => (:b, :u, :v, :e),
+#                           "strong_wind" => (:b, :u, :v, :e),
+#                           "strong_wind_no_rotation" => (:b, :u, :e)
+#                          )
+
+#     parameter_set = CATKEParametersRiDependent
+
+#     parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
+#                     :Cˢc,   :Cˢu,  :Cˢe,
+#                     :Cᵇc,   :Cᵇu,  :Cᵇe,
+#                     :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
+#                     :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
+#                     :CᴷRiᶜ, :CᴷRiʷ)
+
+#     parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
+#                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
+
+#     transformation = (b = Transformation(normalization=ZScore()),
+#                       u = Transformation(normalization=ZScore()),
+#                       v = Transformation(normalization=ZScore()),
+#                       e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
+#                       )
+
+#     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
+
+#     free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_prior))
+
+# end
+
+begin
+    field_names = (:b, :u, :v, :e)
+    fields_by_case = Dict("free_convection" => (:b,),)
+
+    parameter_set = CATKEParametersRiDependent
+
+    parameter_names = (:convective_κz,  :background_κz)
+
+    parameter_set = ParameterSet{ConvectiveAdjustmentVerticalDiffusivity}(Set(parameter_names))
+
+    transformation = (b = Transformation(normalization=ZScore()),)
+
+    closure = closure_with_parameters(ConvectiveAdjustmentVerticalDiffusivity(Float64;), parameter_set.settings)
+
+    # priors = (convective_κz = ScaledLogitNormal(bounds=(0.1, 10.0)),
+    #           background_κz = ScaledLogitNormal(bounds=(0.0, 0.05)))
+
+    priors = named_tuple_map(free_parameters.names, build_prior)
+
+    free_parameters = FreeParameters(priors)
+end
+
 
 #####
 ##### Build the Inverse Problem
@@ -163,7 +190,7 @@ write(o, "Validation inverse problem: $(summary(validation)) \n")
 write(o, "Testing inverse problem: $(summary(testing)) \n")
 
 # y = observation_map(training);
-# θ = named_tuple_map(parameter_set.names, name -> default(name, parameter_set))
+# θ = named_tuple_map(free_parameters.names, name -> default(name, parameter_set))
 # G = forward_map(training, [θ])
 # zc = [mapslices(norm, G .- y, dims = 1)...]
 
@@ -171,7 +198,9 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 5
+case = 1
+
+iterations = 4
 
 function estimate_noise_covariance(data_path_fns, times; case = 1)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
@@ -182,7 +211,7 @@ function estimate_noise_covariance(data_path_fns, times; case = 1)
 end
 
 dp = [four_day_suite_path_1m, four_day_suite_path_2m, four_day_suite_path_4m]
-noise_covariance = estimate_noise_covariance(dp, training_times; case = 1)
+noise_covariance = estimate_noise_covariance(dp, training_times; case) .* 2
 
 resampler = Resampler(acceptable_failure_fraction=0.2, only_failed_particles=true)
 
@@ -209,36 +238,46 @@ begin
         
         obsns_various_resolutions = [SyntheticObservationsBatch(p, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
     
-        parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[5].parameters]
+        parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]
         # parameter_labels = ["Model(Θ₀)", "Model(θ̅₅)"]
         # parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
         # parameter_labels = ["Φ(Θ₀)", "Φ(Θ₅)"]
 
         using LaTeXStrings
-        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\Theta_5)"]
+        parameter_labels = [L"\Phi(\Theta_0)", L"\Phi(\Theta_2)"]
         # observation_label = "Φₗₑₛ"
         observation_label = L"\Phi_{LES}"
 
-        visualize!(training, parameters; parameter_labels, 
+        parameter_labels = ["Prior", "Final ensemble"]
+        observation_label = "Observation"
+
+        parameter_labels = ["Model(Θ₀)", "Model(Θ₂)"]
+        observation_label = "Observation"
+
+        visualize_vertical!(training, parameters; parameter_labels, 
                                          field_names = [:b, :e], 
                                          observation_label,
+                                         directory, 
+                                         filename = "internals_training.png",
+                                         plot_internals = false,
+                                         internals_to_plot = 2,
                                          multi_res_observations=obsns_various_resolutions)
     end
     
     visualize!(training, final_params;
         field_names = [:u, :v, :b, :e],
         directory,
-        filename = "realizations_training_iglesias2021.png"
+        filename = "realizations_training.png"
     )
     visualize!(validation, final_params;
         field_names = [:u, :v, :b, :e],
         directory,
-        filename = "realizations_validation_iglesias2021.png"
+        filename = "realizations_validation.png"
     )
     visualize!(testing, final_params;
         field_names = [:u, :v, :b, :e],
         directory,
-        filename = "realizations_testing_iglesias2021.png"
+        filename = "realizations_testing.png"
     )
 
     θ̅₀ = eki.iteration_summaries[0].ensemble_mean
