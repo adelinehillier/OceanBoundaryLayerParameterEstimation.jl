@@ -69,13 +69,20 @@ function plot_pairwise_ensembles!(eki, directory, true_parameters=nothing)
                 hlines!(axmain,  [true_parameters[pname2]], color = :red)
                 hlines!(axright, [true_parameters[pname2]], color = :red)
             end
-            colsize!(f.layout, 1, Fixed(300))
-            colsize!(f.layout, 2, Fixed(200))
-            rowsize!(f.layout, 1, Fixed(200))
-            rowsize!(f.layout, 2, Fixed(300))
+            # colsize!(f.layout, 1, Fixed(300))
+            # colsize!(f.layout, 2, Fixed(200))
+            # rowsize!(f.layout, 1, Fixed(200))
+            # rowsize!(f.layout, 2, Fixed(300))
+            colsize!(f.layout, 1, Relative(3/5))
+            colsize!(f.layout, 2, Relative(2/5))
+            rowsize!(f.layout, 1, Relative(2/5))
+            rowsize!(f.layout, 2, Relative(3/5))
+
             Legend(f[1, 2], scatters,
-                ["Initial ensemble", "Iteration 1", "Iteration $N_iter"]
-                # position = :lb,
+                ["Initial ensemble", "Iteration 1", "Iteration $N_iter"],
+                labelsize=36,
+                tellwidth=false,
+                tellheight=false,
                 )
             hidedecorations!(axtop, grid = false)
             hidedecorations!(axright, grid = false)
@@ -164,7 +171,7 @@ end
 
 function plot_loss_contour!(fig, eki, xc, yc, zc, pname1, pname2; plot_minimizer=true, title="Objective Function")
 
-    ax = Axis(fig[1, 1]; xlabel=string(pname1), ylabel=string(pname2), title=title)
+    ax = Axis(fig[1, 1]; xlabel=string(pname1), ylabel=string(pname2), title=title, aspect=1, titlesize=36, titlefont="CMU Sans Serif Bold")
 
     CairoMakie.contourf!(ax, xc, yc, zc; levels = 50, colormap = :default)
     # colsize!(fig, 1, Fixed(300))
@@ -181,26 +188,28 @@ function plot_loss_contour!(fig, eki, xc, yc, zc, pname1, pname2; plot_minimizer
     
         am = argmin(zc_no_nans)
         minimizing_params = [xc_no_nans[am] yc_no_nans[am]]
-        push!(scatters, CairoMakie.scatter!(ax, minimizing_params, marker = :x, markersize = 30, color=:green))
+        push!(scatters, CairoMakie.scatter!(ax, minimizing_params, marker = :x, markersize = 40, color=:red))
         push!(legend_labels, "Global min.")
     end
 
     if plot_minimizer
-        Legend(fig[1, 2], scatters, legend_labels; framevisible=false)
+        Legend(fig[1, 2], scatters, legend_labels; framevisible=false, labelsize=36, tellwidth=false, tellheight=false)
     end
 
-    colsize!(fig, 1, Fixed(300))
-    colsize!(fig, 2, Fixed(100))
-    rowsize!(fig, 1, Fixed(300))
+    colsize!(fig, 1, Fixed(600))
+    # colsize!(fig, 2, Relative(1/4))
 end
 
-function plot_eki_particles!(fig, eki, pname1, pname2; title="EKI Particle Traversal")
+function plot_eki_particles!(fig, eki, pname1, pname2; title="EKI Particle Traversal", last_iteration=Inf)
 
-    iterations = eki.iteration
+    iterations = min(eki.iteration, last_iteration)
 
     axtop = Axis(fig[1, 1])
     axright = Axis(fig[2, 2])
-    axmain = Axis(fig[2, 1]; title = title, xlabel = string(pname1), ylabel = string(pname2))
+    axmain = Axis(fig[2, 1]; title = title, titlefont="CMU Sans Serif Bold", titlesize=36,
+                            xlabel = string(pname1),
+                            ylabel = string(pname2),
+                            aspect = 1)
 
     # 2D contour plot with EKI particles superimposed
     begin
@@ -228,13 +237,20 @@ function plot_eki_particles!(fig, eki, pname1, pname2; title="EKI Particle Trave
         end
         legend_labels = vcat(legend_labels, ["Initial ensemble", "Iteration 1", "Iteration $(iterations)"])
 
-        Legend(fig[1, 2], scatters, legend_labels; framevisible=false)
+        Legend(fig[1, 2], scatters, legend_labels; labelsize=36, framevisible=false, tellwidth=false, tellheight=false)
     end
 
-    colsize!(fig, 1, Fixed(300))
-    colsize!(fig, 2, Fixed(100))
-    rowsize!(fig, 1, Fixed(100))
-    rowsize!(fig, 2, Fixed(300))
+    # colsize!(fig, 1, Relative(3/4))
+    # colsize!(fig, 2, Relative(1/4))
+    # rowsize!(fig, 1, Relative(1/4))
+    # rowsize!(fig, 2, Relative(3/4))
+
+    rowsize!(fig, 2, Fixed(600))
+    colsize!(fig, 1, Fixed(600))
+    rowsize!(fig, 1, Fixed(250))
+    # colsize!(fig, 2, Fixed(200))
+    colsize!(fig, 2, Fixed(250))
+
     hidedecorations!(axtop, grid = false)
     hidedecorations!(axright, grid = false)
     linkxaxes!(axmain, axtop)
@@ -243,34 +259,50 @@ function plot_eki_particles!(fig, eki, pname1, pname2; title="EKI Particle Trave
     return fig
 end
 
-function plot_mcmc_particles!(fig, chain1, chain2, chain1seed, chain2seed, best1, best2, pname1, pname2; title="MCMC Particle Traversal Over Loss Landscape")
+function plot_mcmc_particles!(fig, chain1, chain2, chain1seed, chain2seed, best1, best2, pname1, pname2; title="MCMC Particle Traversal Over Loss Landscape", set_lims=true)
 
     axtop = Axis(fig[1, 1])
     axright = Axis(fig[2, 2])
-    axmain = Axis(fig[2, 1]; title = title, xlabel = string(pname1), ylabel = string(pname2))
+    axmain = Axis(fig[2, 1]; title = title, titlefont="CMU Sans Serif Bold", titlesize=36,
+                             xlabel = string(pname1), 
+                             ylabel = string(pname2), 
+                             aspect = 1)
+
+    σ1 = std(chain1)
+    σ2 = std(chain2)
+    if set_lims
+        xlims!(axmain, 0.0, min(mean(chain1) + 3 * σ1, maximum(chain1)))
+        ylims!(axmain, 0.0, min(mean(chain2) + 3 * σ2, maximum(chain2)))
+    end
 
     begin
         legend_labels = Vector{String}([])
         scatters = []
 
-        push!(scatters, CairoMakie.scatter!(axmain, hcat(chain1, chain2); color=(:black, 0.1), markersize=4))
-        density!(axtop, chain1, color=:black)
-        density!(axright, chain2, direction = :y, color=:black)        
+        push!(scatters, CairoMakie.scatter!(axmain, hcat(chain1, chain2); color=(:black, 0.1), markersize=2))
+        density!(axtop, chain1, color=:black, bandwidth=σ1/20)
+        density!(axright, chain2, direction = :y, color=:black, bandwidth=σ2/20)
+   
         push!(legend_labels, "MCMC samples")
 
-        push!(scatters, CairoMakie.scatter!(axmain, hcat(chain1seed, chain2seed); color=(:orange, 1.0), markersize=2))
+        push!(scatters, CairoMakie.scatter!(axmain, hcat(chain1seed, chain2seed); color=(:orange, 1.0), markersize=8))
         push!(legend_labels, "Seed samples")
 
-        push!(scatters, CairoMakie.scatter!(axmain, transpose([best1, best2]); color=:red, marker=:star5, markersize=20))
+        push!(scatters, CairoMakie.scatter!(axmain, transpose([best1, best2]); color="#56B4E9", marker=:star5, markersize=48))
         push!(legend_labels, "Best sample")
 
-        Legend(fig[1, 2], scatters, legend_labels; framevisible=false)
+        Legend(fig[1, 2], scatters, legend_labels; framevisible=false, labelsize=36, tellwidth=false, tellheight=false, patchlabelgap = 15)
     end
 
-    colsize!(fig, 1, Fixed(300))
-    colsize!(fig, 2, Fixed(100))
-    rowsize!(fig, 1, Fixed(100))
-    rowsize!(fig, 2, Fixed(300))
+    # colsize!(fig, 1, Relative(3/4))
+    # colsize!(fig, 2, Relative(1/4))
+    # rowsize!(fig, 1, Relative(1/4))
+    # rowsize!(fig, 2, Relative(3/4))
+    rowsize!(fig, 2, Fixed(600))
+    colsize!(fig, 1, Fixed(600))
+    rowsize!(fig, 1, Fixed(250))
+    colsize!(fig, 2, Fixed(250))
+
     hidedecorations!(axtop, grid = false)
     hidedecorations!(axright, grid = false)
     linkxaxes!(axmain, axtop)
