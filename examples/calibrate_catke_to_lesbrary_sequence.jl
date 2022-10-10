@@ -28,7 +28,7 @@ prior_type = "scaled_logit_normal"
 # prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "calibrate_catke_to_lesbrary_obs1__logit_normal_ensemble_size_10_take3_lognormal_priors/"
+directory = "calibrate_catke_to_lesbrary_obs1__logit_normal_ensemble_size_10_take3_0_to_1_priors/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -47,16 +47,15 @@ covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 function build_prior(name)
     b = bounds(name, parameter_set)
+    return ScaledLogitNormal(bounds=(0.0,100.0))
 
     # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=b)
     # return ScaledLogitNormal(bounds=(0,1))
-    
-    # prior_type == "scaled_logit_normal" && return ScaledLogitNormal(bounds=(0.0,100.0))
     # prior_type == "normal" && return Normal(mean(b), (b[2]-b[1])/3)
     # μ = 0
     # σ = 0.9
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
-    return lognormal(; mean=0.5, std=0.5)
+    # return lognormal(; mean=0.5, std=0.5)
     # return LogNormal(0, 1.2)
 end
 
@@ -96,7 +95,7 @@ end
 
 #     closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 
-#     free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_prior))
+#     free_parameters = FreeParameters(named_tuple_map(parameter_names, build_prior))
 
 # end
 
@@ -199,8 +198,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ###
 
 case = 1
-
-iterations = 4
+iterations = 6
 
 function estimate_noise_covariance(data_path_fns, times; case = 1)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
@@ -234,7 +232,7 @@ begin
     final_params = eki.iteration_summaries[end].ensemble_mean
 
     begin
-        times = training_times; case = 1
+        times = training_times
         
         obsns_various_resolutions = [SyntheticObservationsBatch(p, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
     

@@ -16,8 +16,11 @@ ni = nj = 40
 # pname1 = :Cᴷu⁻
 # pname2 = :Cᴷuʳ
 
-pname1 = :convective_κz
-pname2 = :background_κz
+pname1 = :Cᴷc⁻
+pname2 = :Cᴷcʳ
+
+# pname1 = :convective_κz
+# pname2 = :background_κz
 
 function padded_parameter_range(pname; length=50)
     ensemble = vcat([getproperty.(summary.parameters, pname) for summary in eki.iteration_summaries]...)

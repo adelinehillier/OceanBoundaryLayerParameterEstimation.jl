@@ -82,7 +82,7 @@ import ParameterEstimocean.Parameters: closure_with_parameters
 # )
 
 catke_parameter_guide = Dict(:Cᴰ => (name = "Dissipation parameter (TKE equation)", latex = L"C^D", default = 2.9079, bounds = (0.0, 1.0)), 
-                        :Cᴸᵇ => (name = "Mixing length parameter", latex = L"C^{\ell}_b", default = 1.1612, bounds = (0.0, 1.0)), 
+                        # :Cᴸᵇ => (name = "Mixing length parameter", latex = L"C^{\ell}_b", default = 1.1612, bounds = (0.0, 1.0)), 
                         :Cᵟu => (name = "Ratio of mixing length to grid spacing", latex = L"C^{\delta}u", default = 0.5, bounds = (0.0, 1.0)), 
                         :Cᵟc => (name = "Ratio of mixing length to grid spacing", latex = L"C^{\delta}c", default = 0.5, bounds = (0.0, 1.0)), 
                         :Cᵟe => (name = "Ratio of mixing length to grid spacing", latex = L"C^{\delta}e", default = 0.5, bounds = (0.0, 1.0)), 

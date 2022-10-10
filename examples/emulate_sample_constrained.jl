@@ -11,7 +11,7 @@ include("emulate_sample_utils.jl")
 include("emulate_sample_plotting_functions.jl")
 
 # Options are "priors", "identity," and "physical"
-variable_transformation_type = "priors"
+variable_transformation_type = "physical"
 
 # Specify a directory to which to save the files generated in this script
 dir = joinpath(directory, "emulate_sample_constrained_$(variable_transformation_type)_transformation")
