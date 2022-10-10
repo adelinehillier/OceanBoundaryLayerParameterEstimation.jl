@@ -275,26 +275,26 @@ end
 function problem_transformation(fp::FreeParameters; type="priors")
     names = fp.names
 
+    if type ∉ ["physical", "identity", "priors"]
+        @warn "We do not recognize the variable transformation type '$(type)'. Defaulting to 'priors'."
+    end
+
     transforms = []
     for name in names
         type_to_transform = Dict("physical" => bounds(name, parameter_set)[1] >= 0 ? asℝ₊ : asℝ, 
-                                 "identity" => asℝ,
-                                 "priors" => fp.priors[name])
-        if type ∈ keys(type_to_transform)
-            transform = type_to_transform[type]
-        else
-            @warn "We do not recognize the variable transformation type '$(type)'. Defaulting to 'priors'."
-        end
+                                    "identity" => asℝ,
+                                    "priors" => fp.priors[name])
+        
+        transform = type_to_transform[type]
         push!(transforms, transform)
     end
-    parameter_transformations = as(NamedTuple{Tuple(names)}(transforms))
 
     if type == "priors"
-        transforms = [parameter_transformations[name] for name in names]
-    else 
-        transforms = [parameter_transformations.transformations[name] for name in names]
+        return transforms
     end
-    return transforms
+
+    parameter_transformations = as(NamedTuple{Tuple(names)}(transforms))
+    return [parameter_transformations.transformations[name] for name in names]
 end
 
 """
