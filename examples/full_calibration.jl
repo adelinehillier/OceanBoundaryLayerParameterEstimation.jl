@@ -20,12 +20,12 @@ transform_to_constrained(Π::LogNormal, X) = exp(X)
 covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 Nz = 32
-N_ensemble = 128
+N_ensemble = 100
 architecture = CPU()
 Δt = 5minutes
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "full_calibration_lognormal_priors_2day/"
+directory = "full_calibration_lognormal_priors_2day_please/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -37,9 +37,9 @@ write(o, "$description \n Δt: $Δt \n Nz: $Nz \n N_ensemble: $N_ensemble \n")
 #####
 
 function build_prior(name)
-    return lognormal(; mean=0.5, std=0.5)
-    # b = bounds(name, parameter_set)
-    # return ScaledLogitNormal(bounds=b)
+    # return lognormal(; mean=0.5, std=0.5)
+    b = bounds(name, parameter_set)
+    return ScaledLogitNormal(bounds=b)
 end
 
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
@@ -50,20 +50,20 @@ end
 #####
 
 field_names = (:b, :u, :v, :e)
-fields_by_case = Dict(  "weak_wind_strong_cooling" => (:b, :u, :v, :e),
-                        "strong_wind_weak_cooling" => (:b, :u, :v, :e),
-                        "strong_wind" => (:b, :u, :v, :e),
-                        "strong_wind_no_rotation" => (:b, :u, :e),
-                        "free_convection" => (:b, :e),
-                        )
+fields_by_case = Dict("weak_wind_strong_cooling" => (:b, :u, :v, :e),
+                      "strong_wind_weak_cooling" => (:b, :u, :v, :e),
+                      "strong_wind" => (:b, :u, :v, :e),
+                      "strong_wind_no_rotation" => (:b, :u, :e),
+                    #   "free_convection" => (:b, :e),
+                      )
 
 parameter_set = CATKEParametersRiDependent
 
-parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ,
+parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ⁻,
                 :Cˢc,   :Cˢu,  :Cˢe,
                 :Cᵇc,   :Cᵇu,  :Cᵇe,
                 :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
-                :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
+                :Cᴷc⁺,  :Cᴷu⁺, :Cᴷe⁺,
                 :CᴷRiᶜ, :CᴷRiʷ)
 
 parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
@@ -72,7 +72,7 @@ parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names),
 transformation = (b = Transformation(normalization=ZScore()),
                     u = Transformation(normalization=ZScore()),
                     v = Transformation(normalization=ZScore()),
-                    e = Transformation(normalization=RescaledZScore(0.1), space=SpaceIndices(; z=16:32)),
+                    e = Transformation(normalization=RescaledZScore(0.5), space=SpaceIndices(; z=16:32)),
                     )
 
 closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
@@ -157,7 +157,7 @@ function estimate_noise_covariance(data_path_fns, times; case = 1)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
-    noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(noise_covariance) # prevent zeros
+    noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(abs, noise_covariance) # prevent zeros
     return noise_covariance  
 end
 
@@ -208,11 +208,11 @@ begin
         observation_label = "Observation"
 
         visualize_vertical!(training, parameters; parameter_labels, 
-                                         field_names = [:b, :e], 
+                                         field_names = [:u, :v, :b, :e], 
                                          observation_label,
                                          directory, 
                                          filename = "internals_training.png",
-                                         plot_internals = false,
+                                         plot_internals = true,
                                          internals_to_plot = 2,
                                          multi_res_observations=obsns_various_resolutions)
     end
