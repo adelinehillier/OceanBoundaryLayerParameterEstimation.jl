@@ -235,7 +235,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
                                 pred_ri = pred_ri[pred_ri .<= 100]
                                 pred_ri = pred_ri[pred_ri .>= -100]
                                 cl = ["#F0E442", "#CC79A7"][p_index]
-                                bw = std(pred_ri)/10
+                                bw = max(0.1, std(pred_ri)/10)
                                 length(pred_ri) > 0 && density!(ax_ri_hist, pred_ri; label=plabel, color=(cl, 0.4), strokewidth=2, strokecolor=(cl, 1.0), bandwidth=bw)
                             end
                             
