@@ -20,11 +20,10 @@ using ParameterEstimocean.Transformations: Transformation
 Random.seed!(1234)
 
 Nz = 32
-N_ensemble = 200
-architecture = CPU()
+N_ensemble = 500
+architecture = GPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
-# prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
 directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_logit_normal_actually_ensemble_size_200/"
@@ -135,7 +134,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 iterations = 3
 
 function estimate_noise_covariance(data_path_fns, times)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
     representative_observations = first(obsns_various_resolutions).observations
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)

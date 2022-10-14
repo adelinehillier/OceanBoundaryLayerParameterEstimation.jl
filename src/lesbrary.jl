@@ -17,20 +17,33 @@ transformation = (b = Transformation(normalization=ZScore()),
                   v = Transformation(normalization=ZScore()),
                   e = Transformation(normalization=RescaledZScore(1e-1)))
 
-function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = true, architecture = CPU(), field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
+function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = true, field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
 
    observations = Vector{SyntheticObservations}()
 
    for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
 
-      data_path = datadep ? (@datadep_str path_fn(case)) : path_fn(case)
-      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, architecture, regrid)
+      data_path = path_fn(case)
+      data_path = datadep ? (@datadep_str data_path) : data_path
+      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, regrid)
 
       push!(observations, observation)
    end
 
    return BatchedSyntheticObservations(observations)
 end
+
+one_day_suite_path_2m(case) = data_dir * "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2"
+
+# data_dir = "~/../../home/greg/Projects/LocalOceanClosureCalibration/data"
+# one_day_suite_path_1m(case) = joinpath(data_dir, "/one_day_suite/1m/$(case)_instantaneous_statistics.jld2")
+# two_day_suite_path_1m(case) = joinpath(data_dir, "/two_day_suite/1m/$(case)_instantaneous_statistics.jld2")
+
+# one_day_suite_path_2m(case) = joinpath(data_dir, "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2")
+# two_day_suite_path_2m(case) = joinpath(data_dir, "/two_day_suite/2m/$(case)_instantaneous_statistics.jld2")
+
+# one_day_suite_path_4m(case) = joinpath(data_dir, "/one_day_suite/4m/$(case)_instantaneous_statistics.jld2")
+# two_day_suite_path_4m(case) = joinpath(data_dir, "/two_day_suite/4m/$(case)_instantaneous_statistics.jld2")
 
 # Nz = 256
 two_day_suite_path_1m(case) = "two_day_suite_1m/$(case)_instantaneous_statistics.jld2"
@@ -48,13 +61,13 @@ four_day_suite_path_4m(case) = "four_day_suite_4m/$(case)_instantaneous_statisti
 six_day_suite_path_4m(case) = "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
 
 TwoDaySuite(; transformation=transformation, times=[2hours, 12hours, 1days, 36hours, 2days], 
-            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(two_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(two_day_suite_path_2m, times, Nz; transformation, field_names)
 
 FourDaySuite(; transformation=transformation, times=[2hours, 1days, 2days, 3days, 4days], 
-            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(four_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(four_day_suite_path_2m, times, Nz; transformation, field_names)
 
 SixDaySuite(; transformation=transformation, times=[2hours, 1.5days, 3days, 4.5days, 6days], 
-            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(six_day_suite_path_2m, times, Nz; architecture, transformation, field_names)
+            Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(six_day_suite_path_2m, times, Nz; transformation, field_names)
 
 function lesbrary_ensemble_simulation(observations; 
                                              Nensemble = 30,

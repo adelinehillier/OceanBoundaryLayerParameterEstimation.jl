@@ -129,14 +129,14 @@ end
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
 end
 
 function inverse_problem_sequence(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     ips = []
     for obs in observations.observations
 
@@ -201,7 +201,7 @@ case = 1
 iterations = 6
 
 function estimate_noise_covariance(data_path_fns, times; case = 1)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
     noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(noise_covariance) # prevent zeros
@@ -234,7 +234,7 @@ begin
     begin
         times = training_times
         
-        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
+        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
     
         parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]
         # parameter_labels = ["Model(Θ₀)", "Model(θ̅₅)"]
