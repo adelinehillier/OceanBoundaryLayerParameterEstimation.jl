@@ -109,12 +109,12 @@ end
 function stable_mixing_scale(Ri, θ::NamedTuple, field_name)
 
     if field_name == :b
-        return scale(Ri, θ.Cᴷc⁻, θ.Cᴷcʳ, θ.CᴷRiᶜ, θ.CᴷRiʷ)
+        return scale(Ri, θ.Cᴷc⁻, θ.Cᴷc⁺, θ.CᴷRiᶜ, θ.CᴷRiʷ)
 
     elseif field_name == :e
-        return scale(Ri, θ.Cᴷe⁻, θ.Cᴷeʳ, θ.CᴷRiᶜ, θ.CᴷRiʷ)
+        return scale(Ri, θ.Cᴷe⁻, θ.Cᴷe⁺, θ.CᴷRiᶜ, θ.CᴷRiʷ)
 
     else
-        return scale(Ri, θ.Cᴷu⁻, θ.Cᴷuʳ, θ.CᴷRiᶜ, θ.CᴷRiʷ)
+        return scale(Ri, θ.Cᴷu⁻, θ.Cᴷu⁺, θ.CᴷRiᶜ, θ.CᴷRiʷ)
     end
 end

@@ -4,13 +4,13 @@ using Oceananigans
 using Oceananigans.Units
 using ParameterEstimocean.Transformations: Transformation
 
-# fields_by_case = Dict(
-#    "free_convection" => (:b, :e),
-#    "weak_wind_strong_cooling" => (:b, :u, :v, :e),
-#    "strong_wind_weak_cooling" => (:b, :u, :v, :e),
-#    "strong_wind" => (:b, :u, :v, :e),
-#    "strong_wind_no_rotation" => (:b, :u, :e)
-# )
+fields_by_case = Dict(
+   "weak_wind_strong_cooling" => (:b, :u, :v, :e),
+   "strong_wind_weak_cooling" => (:b, :u, :v, :e),
+   "strong_wind" => (:b, :u, :v, :e),
+   "strong_wind_no_rotation" => (:b, :u, :e),
+   "free_convection" => (:b, :e),
+)
 
 transformation = (b = Transformation(normalization=ZScore()),
                   u = Transformation(normalization=ZScore()),

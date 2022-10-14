@@ -84,7 +84,7 @@ ll = zeros(Nparam)
 # log- noise kernel parameter
 lσ = 0.0
 # kernel = Matern(3/2, ll, lσ)
-kernel = SE(ll, lσ)
+kernel = [SE(ll, lσ) + Noise(log(std)) for std in std(Ĝ; dims=2)]
 # predicts = [trained_gp_predict_function(Ĝ[i,:]) for i in size(Ĝ,1)]
 # vector of predict functions. Ĝ is k x Nsamples
 predicts = emulate(X, Ĝ; k, Nvalidation, kernel)
@@ -110,6 +110,7 @@ begin
     X_full = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(eki.iteration-1)]...) # constrained
     G_full = hcat(outputs[0:(eki.iteration-1)]...)
     Ĝ_full = project_decorrelated(G_full)
+    Φ_full_original_output_space = vcat([eki.iteration_summaries[iter].objective_values for iter in 0:(eki.iteration-1)]...)
     Φ_full = [evaluate_objective(model_sampling_problem, X_full[:, j], Ĝ_full[:, j]) for j in axes(X_full)[2]]
     # Φ_full = nll_unscaled(model_sampling_problem, X_full, normalized=false)
     objective_values_model = sum.(Φ_full)
