@@ -15,9 +15,11 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
     d, M = size(G)
     m = mean(G, dims=2) # d × 1
+    s = std(G, dims=2) # d x 1
 
     # Center the columns of G at zero
-    Gᵀ_centered = (G .- m)'
+    # Gᵀ_centered = (G .- m)'
+    Gᵀ_centered = ((G .- m) ./ s)'
 
     # SVD
     # Gᵀ = Ĝᵀ Σ Vᵀ
@@ -28,10 +30,6 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
     Vᵀ = F.Vt
 
     @assert Gᵀ_centered ≈ Ĝᵀ * Σ * Vᵀ
-    # @show size(Gᵀ_centered), M, d
-    # @show size(Ĝᵀ), M, d
-    # @show size(Σ), d, d
-    # @show size(Vᵀ), d, d
 
     # Eigenvalue sum
     total_eigenval = sum(Σ .^ 2)
@@ -39,7 +37,7 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
     # Keep only the `k` < d most important dimensions
     # corresponding to the `k` highest singular values.
     # Dimensions become (M × d) = (M × k)(k × k)(k × d)
-    Ĝᵀ = Ĝᵀ[:, 1:k] 
+    Ĝᵀ = Ĝᵀ[:, 1:k]
     Σ = Σ[1:k, 1:k]
     Vᵀ = Vᵀ[1:k, :]
 
@@ -58,16 +56,16 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
     D = Diagonal(1 ./ diag(Σ)) * Vᵀ
 
-    project_decorrelated(y) = D * (y .- m)
-    inverse_project_decorrelated(ŷ) = pinv(D) * ŷ .+ m
-    inverse_project_decorrelated_covariance(Γ̂) = pinv(D) * Γ̂ * pinv(D')
+    project_decorrelated(y) = D * ((y .- m) ./ s)
+    inverse_project_decorrelated(ŷ) = (Vᵀ' * Σ * ŷ) .* s .+ m
+    inverse_project_decorrelated_covariance(Γ̂) = Vᵀ' * Σ * Γ̂ * Σ * Vᵀ .* (s * s')
 
     ŷ = project_decorrelated(y)
 
     # Transform the observation covariance matrix
-    Γ̂y = D * Γy * D'
+    Γ̂y = D * Γy * D' .* inv(s * s')
 
-    return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance
+    return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance, inverse_project_decorrelated_covariance2
 end
 
 # errorbars!(xs, ys, lowerrors, higherrors, whiskerwidth = 3, direction = :x)
@@ -303,7 +301,7 @@ emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
 # Arguments
 - `X`: (number of parameters) x (number of training samples) array of training samples.
 - `Ĝ`: (output size) x (number of training samples) array of targets.
-- `kernel`: GaussianProcesses.jl kernel
+- `kernel`: GaussianProcesses.Kernel or Vector{<:GaussianProcesses.Kernel} of length equal to the output size.
 # Returns
 - `predicts`: (output size)-length vector of functions that map parameters to the corresponding coordinate in the output.
 """
@@ -333,11 +331,13 @@ function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)),
             not_emulator_validation_indices = axes(X)[2]
         end
 
+        k = kernel isa GaussianProcesses.Kernel ? deepcopy(kernel) : kernel[i]
+
         predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], 
                                               yᵢ[not_emulator_validation_indices]; 
                                               standardize_X = false, 
                                               zscore_limit = nothing, 
-                                              kernel = deepcopy(kernel))
+                                              kernel = k)
         push!(predicts, predict)
 
         if Nvalidation > 0
