@@ -20,11 +20,10 @@ using ParameterEstimocean.Transformations: Transformation
 Random.seed!(1234)
 
 Nz = 32
-N_ensemble = 200
-architecture = CPU()
+N_ensemble = 500
+architecture = GPU()
 Δt = 5minutes
 prior_type = "scaled_logit_normal"
-# prior_type = "normal"
 description = "Calibrating to days 1-3 of 4-day suite."
 
 directory = "calibrate_catke_to_lesbrary_4day_5minute_take6c_logit_normal_actually_ensemble_size_200/"
@@ -54,7 +53,7 @@ begin
                     :Cᵇc,   :Cᵇu,  :Cᵇe,
                     :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
                     :Cᴷcʳ,  :Cᴷuʳ, :Cᴷeʳ,
-                    :CᴷRiᶜ, :CᴷRiʷ)
+                    :CᴷRiᶜ, :CᴷRiʷ, :Cʷ★, :Cʷℓ)
 
     parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
@@ -90,7 +89,7 @@ end
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
 # stdv = sqrt((exp(σ^2)-1)*exp(2μ+σ^2))
 
-free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_prior))
+free_parameters = FreeParameters(named_tuple_map(parameter_names, build_prior))
 
 #####
 ##### Build the Inverse Problem
@@ -99,7 +98,7 @@ free_parameters = FreeParameters(named_tuple_map(free_parameters.names, build_pr
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
@@ -133,7 +132,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 iterations = 10
 
 function estimate_noise_covariance(data_path_fns, times)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
     representative_observations = first(obsns_various_resolutions).observations
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
@@ -167,9 +166,9 @@ begin
 
     final_params = eki.iteration_summaries[end].ensemble_mean
 
-    obsns_various_resolutions_training = [SyntheticObservationsBatch(p, training_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp]
-    obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
-    obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
+    obsns_various_resolutions_training = [SyntheticObservationsBatch(p, training_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp]
+    obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
+    obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
 
     parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
     observation_label = "Observation"

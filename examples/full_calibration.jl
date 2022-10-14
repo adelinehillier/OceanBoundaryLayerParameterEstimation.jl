@@ -21,11 +21,11 @@ covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
 Nz = 32
 N_ensemble = 128
-architecture = CPU()
+architecture = GPU()
 Δt = 5minutes
 description = "Calibrating to days 1-3 of 4-day suite."
 
-directory = "full_calibration_lognormal_priors_2day/"
+directory = "full_calibration_lognormal_priors_2day_old_catke/"
 isdir(directory) || mkpath(directory)
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -37,9 +37,10 @@ write(o, "$description \n Δt: $Δt \n Nz: $Nz \n N_ensemble: $N_ensemble \n")
 #####
 
 function build_prior(name)
-    return lognormal(; mean=0.5, std=0.5)
-    # b = bounds(name, parameter_set)
-    # return ScaledLogitNormal(bounds=b)
+    # return lognormal(; mean=0.5, std=0.5)
+    b = bounds(name, parameter_set)
+    return ScaledLogitNormal(bounds=b)
+    # return ScaledLogitNormal(bounds=(0,1))
 end
 
 # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
@@ -86,14 +87,15 @@ free_parameters = FreeParameters(named_tuple_map(parameter_names, build_prior))
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
 end
 
 function inverse_problem_sequence(path_fn, N_ensemble, times)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     ips = []
     for obs in observations.observations
 
@@ -109,19 +111,19 @@ function inverse_problem_sequence(path_fn, N_ensemble, times)
         Qᵇ = simulation.model.tracers.b.boundary_conditions.top.condition
         N² = simulation.model.tracers.b.boundary_conditions.bottom.condition
 
-        # try 
-        f = obs.metadata.parameters.coriolis_parameter
-        view(Qᵘ, :, 1) .= obs.metadata.parameters.momentum_flux
-        view(Qᵇ, :, 1) .= obs.metadata.parameters.buoyancy_flux
-        view(N², :, 1) .= obs.metadata.parameters.N²_deep   
-        view(simulation.model.coriolis, :, 1) .= Ref(FPlane(f=f))
-        # catch
-        #     f = obs.metadata.coriolis.f
-        #     view(Qᵘ, :, 1) .= obs.metadata.parameters.Qᵘ
-        #     view(Qᵇ, :, 1) .= obs.metadata.parameters.Qᵇ
-        #     view(N², :, 1) .= obs.metadata.parameters.N²
-        #     view(simulation.model.coriolis, :, 1) .= Ref(FPlane(f=f))
-        # end
+        try 
+            f = obs.metadata.parameters.coriolis_parameter
+            view(Qᵘ, :, 1) .= obs.metadata.parameters.momentum_flux
+            view(Qᵇ, :, 1) .= obs.metadata.parameters.buoyancy_flux
+            view(N², :, 1) .= obs.metadata.parameters.N²_deep   
+            view(simulation.model.coriolis, :, 1) .= Ref(FPlane(f=f))
+        catch
+            f = obs.metadata.coriolis.f
+            view(Qᵘ, :, 1) .= obs.metadata.parameters.Qᵘ
+            view(Qᵇ, :, 1) .= obs.metadata.parameters.Qᵇ
+            view(N², :, 1) .= obs.metadata.parameters.N²
+            view(simulation.model.coriolis, :, 1) .= Ref(FPlane(f=f))
+        end
 
         # simulation = lesbrary_ensemble_simulation(observation; Nensemble=N_ensemble, architecture, closure, Δt)
         push!(ips, InverseProblem(obs, simulation, free_parameters; output_map))
@@ -154,7 +156,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ###
 
 function estimate_noise_covariance(data_path_fns, times; case = 1)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for dp in data_path_fns]
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
     noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(noise_covariance) # prevent zeros
@@ -189,7 +191,7 @@ begin
     begin
         times = training_times
         
-        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
+        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations[case] for p in dp]
     
         parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]
         # parameter_labels = ["Model(Θ₀)", "Model(θ̅₅)"]
