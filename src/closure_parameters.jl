@@ -181,11 +181,11 @@ to build a closure with the specified default parameters and settings,
 given a Set `names` of the parameter names to be tuned, and a Set `nullify`
 of parameters to be set to zero.
 """
-function ParameterSet{C}(names::Set; nullify = Set()) where C
+function ParameterSet{C}(names::Set; nullify = Set(), fix = NamedTuple()) where C
     ref_set = ParameterSet{C}()
     zero_set = named_tuple_map(nullify, name -> 0.0)
     bkgd_set = named_tuple_map(keys(parameter_guide(ref_set)), name -> default(name, ref_set))
-    settings = merge(bkgd_set, zero_set) # order matters: `zero_set` overrides `bkgd_set`
+    settings = merge(bkgd_set, zero_set, fix) # order matters: `zero_set` overrides `bkgd_set`
     return ParameterSet{C}(Tuple(names), settings)
 end
 
