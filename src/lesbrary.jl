@@ -17,7 +17,7 @@ transformation = (b = Transformation(normalization=ZScore()),
                   v = Transformation(normalization=ZScore()),
                   e = Transformation(normalization=RescaledZScore(1e-1)))
 
-function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = true, field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
+function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = false, field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
 
    observations = Vector{SyntheticObservations}()
 
@@ -33,32 +33,40 @@ function SyntheticObservationsBatch(path_fn, times; transformation=transformatio
    return BatchedSyntheticObservations(observations)
 end
 
-one_day_suite_path_2m(case) = data_dir * "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2"
-
 # data_dir = "~/../../home/greg/Projects/LocalOceanClosureCalibration/data"
+data_dir = "../../../../home/greg/Projects/LocalOceanClosureCalibration/data"
 # one_day_suite_path_1m(case) = joinpath(data_dir, "/one_day_suite/1m/$(case)_instantaneous_statistics.jld2")
 # two_day_suite_path_1m(case) = joinpath(data_dir, "/two_day_suite/1m/$(case)_instantaneous_statistics.jld2")
 
 # one_day_suite_path_2m(case) = joinpath(data_dir, "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2")
-# two_day_suite_path_2m(case) = joinpath(data_dir, "/two_day_suite/2m/$(case)_instantaneous_statistics.jld2")
+# # two_day_suite_path_2m(case) = joinpath(data_dir, "/two_day_suite/2m/$(case)_instantaneous_statistics.jld2")
 
 # one_day_suite_path_4m(case) = joinpath(data_dir, "/one_day_suite/4m/$(case)_instantaneous_statistics.jld2")
-# two_day_suite_path_4m(case) = joinpath(data_dir, "/two_day_suite/4m/$(case)_instantaneous_statistics.jld2")
+# # two_day_suite_path_4m(case) = joinpath(data_dir, "/two_day_suite/4m/$(case)_instantaneous_statistics.jld2")
 
-# Nz = 256
-two_day_suite_path_1m(case) = "two_day_suite_1m/$(case)_instantaneous_statistics.jld2"
-four_day_suite_path_1m(case) = "four_day_suite_1m/$(case)_instantaneous_statistics.jld2"
-six_day_suite_path_1m(case) = "six_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+one_day_suite_path_1m(case) = data_dir * "/one_day_suite/1m/$(case)_instantaneous_statistics.jld2"
+two_day_suite_path_1m(case) = data_dir * "/two_day_suite/1m/$(case)_instantaneous_statistics.jld2"
 
-# Nz = 128
-two_day_suite_path_2m(case) = "two_day_suite_2m/$(case)_instantaneous_statistics.jld2"
-four_day_suite_path_2m(case) = "four_day_suite_2m/$(case)_instantaneous_statistics.jld2"
-six_day_suite_path_2m(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+one_day_suite_path_2m(case) = data_dir * "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2"
+# two_day_suite_path_2m(case) = "~/../../home/greg/Projects/LocalOceanClosureCalibration/data/two_day_suite/2m/$(case)_instantaneous_statistics.jld2"
 
-# Nz = 64
-two_day_suite_path_4m(case) = "two_day_suite_4m/$(case)_instantaneous_statistics.jld2"
-four_day_suite_path_4m(case) = "four_day_suite_4m/$(case)_instantaneous_statistics.jld2"
-six_day_suite_path_4m(case) = "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+one_day_suite_path_4m(case) = data_dir * "/one_day_suite/4m/$(case)_instantaneous_statistics.jld2"
+# two_day_suite_path_4m(case) = data_dir * "/two_day_suite/4m/$(case)_instantaneous_statistics.jld2"
+
+# # Nz = 256
+# two_day_suite_path_1m(case) = "two_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+# four_day_suite_path_1m(case) = "four_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+# six_day_suite_path_1m(case) = "six_day_suite_1m/$(case)_instantaneous_statistics.jld2"
+
+# # Nz = 128
+# two_day_suite_path_2m(case) = "two_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+# four_day_suite_path_2m(case) = "four_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+# six_day_suite_path_2m(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
+
+# # Nz = 64
+# two_day_suite_path_4m(case) = "two_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+# four_day_suite_path_4m(case) = "four_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+# six_day_suite_path_4m(case) = "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
 
 TwoDaySuite(; transformation=transformation, times=[2hours, 12hours, 1days, 36hours, 2days], 
             Nz=64, architecture=CPU(), field_names = (:b, :u, :v, :e)) = SyntheticObservationsBatch(two_day_suite_path_2m, times, Nz; transformation, field_names)
