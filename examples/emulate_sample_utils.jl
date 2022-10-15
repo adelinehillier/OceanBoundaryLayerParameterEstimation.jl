@@ -15,11 +15,10 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
     d, M = size(G)
     m = mean(G, dims=2) # d × 1
-    s = std(G, dims=2) # d x 1
 
     # Center the columns of G at zero
     # Gᵀ_centered = (G .- m)'
-    Gᵀ_centered = ((G .- m) ./ s)'
+    Gᵀ_centered = (G .- m)'
 
     # SVD
     # Gᵀ = Ĝᵀ Σ Vᵀ
@@ -56,17 +55,74 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
     D = Diagonal(1 ./ diag(Σ)) * Vᵀ
 
-    project_decorrelated(y) = D * ((y .- m) ./ s)
-    inverse_project_decorrelated(ŷ) = (Vᵀ' * Σ * ŷ) .* s .+ m
-    inverse_project_decorrelated_covariance(Γ̂) = Vᵀ' * Σ * Γ̂ * Σ * Vᵀ .* (s * s')
+    project_decorrelated(y) = D * (y .- m)
+    inverse_project_decorrelated(ŷ) = (Vᵀ' * Σ * ŷ) .+ m
+    inverse_project_decorrelated_covariance(Γ̂) = Vᵀ' * Σ * Γ̂ * Σ * Vᵀ
 
     ŷ = project_decorrelated(y)
 
     # Transform the observation covariance matrix
-    Γ̂y = D * Γy * D' .* inv(s * s')
+    Γ̂y = D * Γy * D'
 
-    return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance, inverse_project_decorrelated_covariance2
+    return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance
 end
+
+# function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
+
+#     d, M = size(G)
+#     m = mean(G, dims=2) # d × 1
+#     s = std(G, dims=2) # d x 1
+
+#     # Center the columns of G at zero
+#     # Gᵀ_centered = (G .- m)'
+#     Gᵀ_centered = ((G .- m) ./ s)'
+
+#     # SVD
+#     # Gᵀ = Ĝᵀ Σ Vᵀ
+#     # (M × d) = (M × d)(d × d)(d × d)    
+#     F = svd(Gᵀ_centered; full=false)
+#     Ĝᵀ = F.U
+#     Σ = Diagonal(F.S)
+#     Vᵀ = F.Vt
+
+#     @assert Gᵀ_centered ≈ Ĝᵀ * Σ * Vᵀ
+
+#     # Eigenvalue sum
+#     total_eigenval = sum(Σ .^ 2)
+
+#     # Keep only the `k` < d most important dimensions
+#     # corresponding to the `k` highest singular values.
+#     # Dimensions become (M × d) = (M × k)(k × k)(k × d)
+#     Ĝᵀ = Ĝᵀ[:, 1:k]
+#     Σ = Σ[1:k, 1:k]
+#     Vᵀ = Vᵀ[1:k, :]
+
+#     @info "Preserved $(sum(Σ .^ 2)*100/total_eigenval)% of the original variance in the output data by 
+#            reducing the dimensionality of the output space from $d to $k."
+
+#     Ĝ = Ĝᵀ'
+#     #      Ĝᵀ = (Gᵀ - mᵀ) V Σ⁻¹
+#     # (M × k) = (M × d)(d × k)(k × k)
+#     # Therefore
+#     #       Ĝ = Σ⁻¹ Vᵀ (G - m)
+#     # (k × M) = (k × k)(k × d)(d × M)
+#     #
+#     # Therefore to transform the observations,
+#     # ŷ = Σ⁻¹ Vᵀ (y - m)
+
+#     D = Diagonal(1 ./ diag(Σ)) * Vᵀ
+
+#     project_decorrelated(y) = D * ((y .- m) ./ s)
+#     inverse_project_decorrelated(ŷ) = (Vᵀ' * Σ * ŷ) .* s .+ m
+#     inverse_project_decorrelated_covariance(Γ̂) = Vᵀ' * Σ * Γ̂ * Σ * Vᵀ .* (s * s')
+
+#     ŷ = project_decorrelated(y)
+
+#     # Transform the observation covariance matrix
+#     Γ̂y = D * Γy * D' .* inv(s * s')
+
+#     return Ĝ, ŷ, Γ̂y, project_decorrelated, inverse_project_decorrelated, inverse_project_decorrelated_covariance, inverse_project_decorrelated_covariance2
+# end
 
 # errorbars!(xs, ys, lowerrors, higherrors, whiskerwidth = 3, direction = :x)
 
