@@ -53,7 +53,7 @@ begin
                         :Cᵇc,   :Cᵇu,  :Cᵇe,
                         :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
                         :Cᴷc⁺,  :Cᴷu⁺, :Cᴷe⁺,
-                        :CᴷRiᶜ, :CᴷRiʷ)
+                        :CᴷRiᶜ, :CᴷRiʷ, :Cʷ★, :Cʷℓ)
 
     parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
                                 nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
@@ -100,7 +100,7 @@ names = free_parameters.names
 output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times; free_parameters = free_parameters)
-    observations = SyntheticObservationsBatch(path_fn, times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz))
+    observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz))
     simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
@@ -131,7 +131,7 @@ write(o, "Testing inverse problem: $(summary(testing)) \n")
 ### Calibrate
 ###
 
-iterations = 3
+iterations = 5
 
 function estimate_noise_covariance(data_path_fns, times)
     obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)) for dp in data_path_fns]
@@ -166,48 +166,47 @@ for step = ProgressBar(1:iterations)
 end
 
 final_params = eki.iteration_summaries[end].ensemble_mean
-next_priors = Dict(name => ScaledLogitNormal(bounds=(0,max(1,final_params[name] * 2))) for name in names)
-next_priors = NamedTuple(next_priors)
-free_parameters = FreeParameters(next_priors; names=keys(next_priors))
-training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times; free_parameters)
-eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-outputs = OffsetArray([], -1)
-for step = ProgressBar(1:iterations)
-    # convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
-    # pseudo_stepping = ConstantConvergence(convergence_ratio)       
-    push!(outputs, deepcopy(eki.forward_map_output)) 
-    pseudo_step!(eki; pseudo_stepping)
-end
-final_params = eki.iteration_summaries[end].ensemble_mean
+# next_priors = Dict(name => ScaledLogitNormal(bounds=(0,max(1,final_params[name] * 2))) for name in names)
+# next_priors = NamedTuple(next_priors)
+# free_parameters = FreeParameters(next_priors; names=keys(next_priors))
+# training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times; free_parameters)
+# eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
+# outputs = OffsetArray([], -1)
+# for step = ProgressBar(1:iterations)
+#     # convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
+#     # pseudo_stepping = ConstantConvergence(convergence_ratio)       
+#     push!(outputs, deepcopy(eki.forward_map_output)) 
+#     pseudo_step!(eki; pseudo_stepping)
+# end
+# final_params = eki.iteration_summaries[end].ensemble_mean
 
-next_priors = Dict(name => ScaledLogitNormal(bounds=(0,max(1,final_params[name] * 2))) for name in names)
-next_priors = NamedTuple(next_priors)
-free_parameters = FreeParameters(next_priors; names=keys(next_priors))
-training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times; free_parameters)
-eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
-outputs = OffsetArray([], -1)
-for step = ProgressBar(1:4)
-    # convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
-    # pseudo_stepping = ConstantConvergence(convergence_ratio)       
-    push!(outputs, deepcopy(eki.forward_map_output)) 
-    pseudo_step!(eki; pseudo_stepping)
-end
-final_params = eki.iteration_summaries[end].ensemble_mean
+# next_priors = Dict(name => ScaledLogitNormal(bounds=(0,max(1,final_params[name] * 2))) for name in names)
+# next_priors = NamedTuple(next_priors)
+# free_parameters = FreeParameters(next_priors; names=keys(next_priors))
+# training = inverse_problem(four_day_suite_path_2m, N_ensemble, training_times; free_parameters)
+# eki = EnsembleKalmanInversion(training; noise_covariance, pseudo_stepping, resampler, tikhonov = true)
+# outputs = OffsetArray([], -1)
+# for step = ProgressBar(1:4)
+#     # convergence_ratio = range(0.3, stop=0.1, length=iterations)[step]
+#     # pseudo_stepping = ConstantConvergence(convergence_ratio)       
+#     push!(outputs, deepcopy(eki.forward_map_output)) 
+#     pseudo_step!(eki; pseudo_stepping)
+# end
+# final_params = eki.iteration_summaries[end].ensemble_mean
 
-
-obsns_various_resolutions_training = [SyntheticObservationsBatch(p, training_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp]
-obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
-obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; architecture, transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
+obsns_various_resolutions_training = [SyntheticObservationsBatch(p, training_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp]
+# obsns_various_resolutions_validation = [SyntheticObservationsBatch(p, validation_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_validation]
+obsns_various_resolutions_testing = [SyntheticObservationsBatch(p, testing_times; transformation, field_names, fields_by_case, regrid=(1,1,Nz)).observations for p in dp_testing]
 
 parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
 observation_label = "Observation"
 
-visualize_vertical!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]; 
-    parameter_labels, observation_label, directory,
-    multi_res_observations = obsns_various_resolutions_training,
-    plot_internals = true,
-    internals_to_plot = 2,    
-    filename = "internals_training.png")
+# # visualize_vertical!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]; 
+# #     parameter_labels, observation_label, directory,
+# #     multi_res_observations = obsns_various_resolutions_training,
+# #     plot_internals = true,
+# #     internals_to_plot = 2,    
+# #     filename = "internals_training.png")
 
 visualize!(training, [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]; 
     parameter_labels, observation_label, directory,
@@ -223,16 +222,16 @@ visualize!(training, [eki.iteration_summaries[0].parameters, final_params];
     parameter_labels, observation_label, directory, 
     filename = "realizations_training_deterministic_observation.png"
 )
-visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
-    parameter_labels, observation_label, directory,
-    multi_res_observations = obsns_various_resolutions_validation,
-    filename = "realizations_validation.png"
-)
-visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
-    parameter_labels, observation_label, directory,
-    multi_res_observations = obsns_various_resolutions_validation,
-    filename = "realizations_validation_deterministic_observation.png"
-)
+# visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
+#     parameter_labels, observation_label, directory,
+#     multi_res_observations = obsns_various_resolutions_validation,
+#     filename = "realizations_validation.png"
+# )
+# visualize!(validation, [eki.iteration_summaries[0].parameters, final_params];
+#     parameter_labels, observation_label, directory,
+#     multi_res_observations = obsns_various_resolutions_validation,
+#     filename = "realizations_validation_deterministic_observation.png"
+# )
 visualize!(testing, [eki.iteration_summaries[0].parameters, final_params];
     parameter_labels, observation_label, directory,
     multi_res_observations = obsns_various_resolutions_testing,
