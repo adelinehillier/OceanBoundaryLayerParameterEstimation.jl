@@ -80,6 +80,7 @@ SixDaySuite(; transformation=transformation, times=[2hours, 1.5days, 3days, 4.5d
 function lesbrary_ensemble_simulation(observations; 
                                              Nensemble = 30,
                                              architecture = CPU(),
+                                             tracers = (:b, :e),
                                              closure = ConvectiveAdjustmentVerticalDiffusivity(),
                                              Δt = 10.0
                                     )
@@ -87,7 +88,7 @@ function lesbrary_ensemble_simulation(observations;
     simulation = ensemble_column_model_simulation(observations;
                                                   Nensemble,
                                                   architecture,
-                                                  tracers = (:b, :e),
+                                                  tracers,
                                                   closure)
 
     simulation.Δt = Δt
@@ -96,7 +97,7 @@ function lesbrary_ensemble_simulation(observations;
     Qᵇ = simulation.model.tracers.b.boundary_conditions.top.condition
     N² = simulation.model.tracers.b.boundary_conditions.bottom.condition
 
-    for case in 1:length(observations)
+    for case = 1:length(observations)
       obs = observations[case]
       try 
          f = obs.metadata.parameters.coriolis_parameter
