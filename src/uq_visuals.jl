@@ -59,7 +59,7 @@ function plot_mcmc_densities(chain_X, parameter_names;
                             
     fig = Figure(resolution = (500n_columns, 200n_rows))
 
-    ax_coords = [(i, j) for i = 1:n_rows, j = 1:n_columns]
+    ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
 
     # Reserve position [1,1] for the legend
     ax1 = Axis(fig[1,1])

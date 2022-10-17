@@ -19,9 +19,9 @@ function plot_parameter_convergence!(eki, directory; true_parameters=nothing, n_
     N_iter = length(eki.iteration_summaries) - 1 # exclude 0th element
 
     n_rows = Int(ceil(N_param / n_columns))
-    ax_coords = [(i, j) for i = 1:n_rows, j = 1:n_columns]
+    ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
 
-    fig = Figure(resolution = (500n_columns, 200n_rows))
+    fig = Figure(resolution = (400n_columns, 200n_rows))
     for (i, pname) in enumerate(pnames)
         coords = ax_coords[i]
         ax = Axis(fig[coords...],
