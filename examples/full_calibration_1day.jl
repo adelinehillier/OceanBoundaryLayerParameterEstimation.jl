@@ -19,10 +19,10 @@ transform_to_unconstrained(Π::LogNormal, Y) = log(Y)
 transform_to_constrained(Π::LogNormal, X) = exp(X)
 covariance_transform_diagonal(::LogNormal, X) = exp(X)
 
-N_ensemble = 200
-architecture = GPU()
+N_ensemble = 300
+architecture = CPU()
 Δt = 5minutes
-case = 1
+case = 0
 
 directory = "full_calibration/"
 isdir(directory) || mkpath(directory)
@@ -32,9 +32,10 @@ isdir(directory) || mkpath(directory)
 #####
 
 function build_prior(name)
-    b = bounds(name, parameter_set)
-    return ScaledLogitNormal(bounds=b)
-    # return lognormal(; mean=0.5, std=0.5)
+    # b = bounds(name, parameter_set)
+    # return ScaledLogitNormal(bounds=b)
+    return lognormal(; mean=0.5, std=0.5)
+
     # return lognormal(;mean = exp(μ + σ^2/2), std = sqrt((exp(σ^2)-1)*exp(2μ+σ^2)))
     # stdv = sqrt((exp(σ^2)-1)*exp(2μ+σ^2))
 end
@@ -44,14 +45,18 @@ field_names = (:b, :u, :v, :e)
 parameter_set = CATKEParametersRiDependent
 
 parameter_names = (:CᵂwΔ,  :Cᵂu★, :Cᴰ⁻,
-                :Cˢc,   :Cˢu,  :Cˢe,
+                # :Cˢc,   :Cˢu,  :Cˢe,
                 :Cᵇc,   :Cᵇu,  :Cᵇe,
                 :Cᴷc⁻,  :Cᴷu⁻, :Cᴷe⁻,
                 :Cᴷc⁺,  :Cᴷu⁺, :Cᴷe⁺,
-                :CᴷRiᶜ, :CᴷRiʷ)
+                :CᴷRiᶜ, :CᴷRiʷ,
+                :Cᴬu, :Cᴬc, :Cᴬe)
 
 parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
-                            nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]))
+                            nullify = Set([:Cᴬu, :Cᴬc, :Cᴬe]), fix = NamedTuple(Dict(:Cʷ★ => 10, :Cʷℓ => 10)))
+parameter_set = ParameterSet{CATKEVerticalDiffusivity}(Set(parameter_names), 
+                                                            # nullify = Set([:Cˢc,   :Cˢu,  :Cˢe]),
+                                                            fix = NamedTuple(Dict(:Cʷ★ => 10, :Cʷℓ => 10)))
 
 closure = closure_with_parameters(CATKEVerticalDiffusivity(Float64;), parameter_set.settings)
 
@@ -61,7 +66,7 @@ free_parameters = FreeParameters(named_tuple_map(parameter_names, build_prior))
 ##### Configure directories
 #####
 
-old_data = false
+old_data = true
 datadep = old_data
 if datadep
     # Nz = 256
@@ -83,7 +88,7 @@ if datadep
     regrid = (1, 1, 32)
     description = "Calibrating to 2-day suite."
 
-    training_times = [0.25days, 0.5days, 1.0days, 2.0days]
+    training_times = [0.25days, 0.5days, 0.75days, 1.0days, 1.5days, 2.0days]
     validation_times = [0.25days, 0.5days, 1.0days, 2.0days, 4.0days]
     testing_times = [0.25days, 1.0days, 3.0days, 6.0days]
 
@@ -94,17 +99,17 @@ if datadep
     transformation = (b = Transformation(normalization=ZScore()),
                     u = Transformation(normalization=ZScore()),
                     v = Transformation(normalization=ZScore()),
-                    e = Transformation(normalization=RescaledZScore(0.5), space=SpaceIndices(; z=16:32)),
+                    e = Transformation(normalization=RescaledZScore(0.01), space=SpaceIndices(; z=16:32)),
                     )
 
     fields_by_case = Dict(
-                    "strong_wind" => (:b, :u, :v, :e),
-                    "strong_wind_no_rotation" => (:b, :u, :e),
-                    "strong_wind_weak_cooling" => (:b, :u, :v, :e),
-                    "weak_wind_strong_cooling" => (:b, :u, :v, :e),
-                    "free_convection" => (:b, :e),
-                    )
-                    
+        "weak_wind_strong_cooling" => (:b, :u, :v, :e),
+        "strong_wind_no_rotation" => (:b, :u, :e),
+        "strong_wind_weak_cooling" => (:b, :u, :v, :e),
+        "strong_wind" => (:b, :u, :v, :e),
+        "free_convection" => (:b, :e),
+        )    
+    
 else
     data_dir = "../../../../home/greg/Projects/LocalOceanClosureCalibration/data"
     one_day_suite_path_1m(case) = data_dir * "/one_day_suite/1m/$(case)_instantaneous_statistics.jld2"
@@ -122,10 +127,10 @@ else
     training_path_fn = one_day_suite_path_2m
     # testing_path_fn = two_day_suite_path_2m
 
-    transformation = (b = Transformation(normalization=ZScore()),
-                    u = Transformation(normalization=ZScore()),
-                    v = Transformation(normalization=ZScore()),
-                    e = Transformation(normalization=RescaledZScore(0.5), space=SpaceIndices(; z=24:48)),
+    transformation = (b = Transformation(normalization=RescaledZScore(2.0), space=SpaceIndices(; z=12:48)),
+                    u = Transformation(normalization=ZScore(), space=SpaceIndices(; z=12:48)),
+                    v = Transformation(normalization=ZScore(), space=SpaceIndices(; z=12:48)),
+                    e = Transformation(normalization=RescaledZScore(0.01), space=SpaceIndices(; z=24:48)),
                     )
 
     fields_by_case = Dict(
@@ -135,7 +140,7 @@ else
                     "med_wind_med_cooling" => (:b, :u, :v, :e),
                     "weak_wind_strong_cooling" => (:b, :u, :v, :e),
                     "free_convection" => (:b, :e),
-                    )    
+                    )
 end
 
 dir = joinpath(directory, "calibration_setup.txt")
@@ -150,7 +155,7 @@ output_map = ConcatenatedOutputMap()
 
 function inverse_problem(path_fn, N_ensemble, times)
     observations = SyntheticObservationsBatch(path_fn, times; transformation, field_names, fields_by_case, regrid, datadep)
-    simulation = lesbrary_ensemble_simulation(observations; Nensemble=N_ensemble, architecture, closure, Δt)
+    simulation = lesbrary_ensemble_simulation(observations; Nensemble = N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
 end
@@ -166,7 +171,7 @@ function inverse_problem_sequence(path_fn, N_ensemble, times)
                                                     architecture,
                                                     tracers = (:b, :e),
                                                     closure)
-
+  
         simulation.Δt = Δt
 
         Qᵘ = simulation.model.velocities.u.boundary_conditions.top.condition
@@ -193,8 +198,10 @@ function inverse_problem_sequence(path_fn, N_ensemble, times)
     return ips
 end
 
+training_all_sims = inverse_problem(training_path_fn, N_ensemble, training_times)
 
-training = inverse_problem_sequence(training_path_fn, N_ensemble, training_times)[case]
+training = case == 0 ? training_all_sims : inverse_problem_sequence(training_path_fn, N_ensemble, training_times)[case]
+
 # testing = inverse_problem_sequence(testing_path_fn, N_ensemble, testing_times)[case]
 # validation = inverse_problem_sequence(four_day_suite_path_2m, N_ensemble, validation_times)[case]
 
@@ -211,7 +218,10 @@ write(o, "Training inverse problem: $(summary(training)) \n")
 ###
 
 function estimate_noise_covariance(data_path_fns, times; case = 1)
-    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid, datadep).observations[case] for dp in data_path_fns]
+    obsns_various_resolutions = [SyntheticObservationsBatch(dp, times; transformation, field_names, fields_by_case, regrid, datadep) for dp in data_path_fns]
+    if case != 0
+        obsns_various_resolutions = [observations.observations[case] for observations in obsns_various_resolutions]
+    end
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
     noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(abs, noise_covariance) # prevent zeros
@@ -221,7 +231,7 @@ end
 resampler = Resampler(acceptable_failure_fraction=0.6, only_failed_particles=true)
 pseudo_stepping = Iglesias2021()
 
-iterations = 4
+iterations = 10
 
 begin
     noise_covariance = estimate_noise_covariance(dp, training_times; case) .* 2
@@ -241,8 +251,11 @@ begin
     begin
         times = training_times
         
-        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; transformation, field_names, fields_by_case, regrid).observations[case] for p in dp]
-    
+        obsns_various_resolutions = [SyntheticObservationsBatch(p, times; transformation, field_names, fields_by_case, regrid, datadep) for p in dp]
+        if case != 0
+            obsns_various_resolutions = [observations.observations[case] for observations in obsns_various_resolutions]
+        end
+
         parameters = [eki.iteration_summaries[0].parameters, eki.iteration_summaries[end].parameters]
         # parameter_labels = ["Model(Θ₀)", "Model(θ̅₅)"]
         # parameter_labels = ["Model(Θ₀)", "Model(Θ₅)"]
@@ -259,6 +272,14 @@ begin
         parameter_labels = ["Model(Θ₀)", "Model(Θ₂)"]
         observation_label = "Observation"
 
+        visualize_vertical!(training, parameters; parameter_labels, 
+                                         field_names = [:u, :v, :b, :e], 
+                                         observation_label,
+                                         directory, 
+                                         filename = "internals_training.png",
+                                         plot_internals = false,
+                                         multi_res_observations=obsns_various_resolutions)
+
         # visualize_vertical!(training, parameters; parameter_labels, 
         #                                  field_names = [:u, :v, :b, :e], 
         #                                  observation_label,
@@ -273,6 +294,16 @@ begin
     #     directory,
     #     filename = "realizations_validation.png"
     # )
+    visualize!(training, final_params;
+        field_names = [:u, :v, :b, :e],
+        directory,
+        filename = "realizations_training.png"
+    )
+    visualize!(training_all_sims, final_params;
+        field_names = [:u, :v, :b, :e],
+        directory,
+        filename = "realizations_training.png"
+    )
 
     θ̅₀ = eki.iteration_summaries[0].ensemble_mean
     θ̅₁₀ = final_params
@@ -303,10 +334,10 @@ begin
     ### Summary Plots
     ###
 
-    plot_parameter_convergence!(eki, directory)
+    plot_parameter_convergence!(eki, directory, n_columns = 5)
     plot_error_convergence!(eki, directory)
     plot_pairwise_ensembles!(eki, directory)
 
-    include("./emulate_sample_constrained.jl")
-    include("./post_sampling_visualizations.jl")
+    # include("./emulate_sample_constrained.jl")
+    # include("./post_sampling_visualizations.jl")
 end
