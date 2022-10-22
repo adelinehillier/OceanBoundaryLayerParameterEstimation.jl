@@ -7,7 +7,8 @@ using Colors
 include("visualize_profile_predictions_utils.jl")
 
 # Temporary hack -- couldn't get Makie to render LaTeX properly
-guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
+superscript_guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
+int_to_superscript(x) = string([getindex(superscript_guide, parse(Int64, c)+1) for c in string(x)]...)
 
 function observed_interior(field_time_serieses, field_name)
     obsn = getproperty(field_time_serieses, field_name)
@@ -27,7 +28,7 @@ end
 function scaling_xlabel(data, info)
     om = order_of_magnitude(maximum(abs.(data)))
     scaling = 10^(-om)
-    om_string = string([getindex(guide, parse(Int64, c)+1) for c in string(abs(om))]...)
+    om_string = int_to_superscript(abs(om))
     om_prefix = om < 0 ? "⁻" : ""
     xlabel = string("$(info.name) (10$(om_prefix * om_string) $(info.units))")
 
