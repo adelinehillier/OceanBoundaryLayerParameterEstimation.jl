@@ -228,9 +228,34 @@ using TransformVariables
 using TransformVariables: TransformTuple, ScalarTransform
 using ParameterEstimocean.Transformations: AbstractNormalization
 
+struct InputStandardization{M, S} <: AbstractNormalization
+        μ :: M
+        Σ :: S
+    inv_Σ :: S
+end
+
+function InputStandardization(data)
+    μ = mean(data, dims=2)
+    Γ = cov(data, dims=2)
+    Σ = sqrt(Γ)
+    inv_Σ = inv(Σ)
+
+    return InputStandardization(μ, Σ, inv_Σ)
+end
+
+import ParameterEstimocean.Transformations: normalize!, denormalize!
+
+function normalize!(θ, normalization::InputStandardization)
+    θ[:,:] = normalization.inv_Σ * (θ .- normalization.μ)
+end
+
+function denormalize!(θ, normalization::InputStandardization)
+    θ[:,:] = (normalization.Σ * θ) .+ normalization.μ
+end
+
 struct NormalizationTransformation
-    normalization::AbstractNormalization
-    transformation::Vector
+    normalization :: AbstractNormalization
+    transformation :: Vector
 end
 
 import TransformVariables: transform, inverse
@@ -251,16 +276,17 @@ function inverse_normalize_transform(θ, nt::NormalizationTransformation)
     return θ
 end
 
-struct ModelSamplingProblem{V <: AbstractVector, M <: AbstractMatrix}
+struct ModelSamplingProblem{V <: AbstractVector, M <: AbstractMatrix, S}
     inverse_problem :: InverseProblem
     input_normalization :: NormalizationTransformation
     Γ̂y :: M
     ŷ :: M
     inv_sqrt_Γθ :: M
     μθ :: V
+    min_loss :: S
 end
 
-function ModelSamplingProblem(inverse_problem, input_normalization, ŷ, Γ̂y)
+function ModelSamplingProblem(inverse_problem, input_normalization, ŷ, Γ̂y; min_loss = 1)
 
     fp = inverse_problem.free_parameters    
     μθ = prior_means(fp)
@@ -269,26 +295,27 @@ function ModelSamplingProblem(inverse_problem, input_normalization, ŷ, Γ̂y)
 
     @show typeof.([Γ̂y, ŷ, inv_sqrt_Γθ, μθ])
     
-    return ModelSamplingProblem(inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ)
+    return ModelSamplingProblem(inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ, min_loss)
 end
 
-struct EmulatorSamplingProblem{P, V, M <: AbstractMatrix}
-    predicts :: P
+struct EmulatorSamplingProblem{P, V, M <: AbstractMatrix, S}
+    model :: P
     input_normalization :: NormalizationTransformation
     Γ̂y :: M
     ŷ :: M
     inv_sqrt_Γθ :: M
     μθ :: V
+    min_loss :: S
 end
 
-function EmulatorSamplingProblem(predicts, inverse_problem, input_normalization, ŷ, Γ̂y)
+function EmulatorSamplingProblem(model, inverse_problem, input_normalization, ŷ, Γ̂y; min_loss = 1)
 
     fp = inverse_problem.free_parameters    
     μθ = prior_means(fp)
     Γθ = diagm( prior_variances(fp) )
     inv_sqrt_Γθ = inv(sqrt(Γθ))
     
-    return EmulatorSamplingProblem(predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ)
+    return EmulatorSamplingProblem(model, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ, min_loss)
 end
 
 function evaluate_objective(problem, θ, Ĝ; Γgp=0)
@@ -335,8 +362,8 @@ function problem_transformation(fp::FreeParameters; type="priors")
 
     transforms = []
     for name in names
-        type_to_transform = Dict("physical" => bounds(name, parameter_set)[1] >= 0 ? asℝ₊ : asℝ, 
-                                    "identity" => asℝ,
+        type_to_transform = Dict("identity" => asℝ,
+                                    # "physical" => bounds(name, parameter_set)[1] >= 0 ? asℝ₊ : asℝ, 
                                     "priors" => fp.priors[name])
         
         transform = type_to_transform[type]
@@ -352,7 +379,7 @@ function problem_transformation(fp::FreeParameters; type="priors")
 end
 
 """
-emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+emulate_manual(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
 
 # Arguments
 - `X`: (number of parameters) x (number of training samples) array of training samples.
@@ -361,7 +388,7 @@ emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
 # Returns
 - `predicts`: (output size)-length vector of functions that map parameters to the corresponding coordinate in the output.
 """
-function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+function emulate_manual(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
     @info "Training $k gaussian processes for the emulator."
     validation_results=[]
     predicts=[]
@@ -379,18 +406,18 @@ function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)),
             uq = lq*4
             decimal_indices = range(lq, uq, length = Nvalidation)
             evenly_spaced_samples = Int.(round.(decimal_indices))
-            emulator_validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
-            not_emulator_validation_indices = [i for i in 1:M if !(i in emulator_validation_indices)]
-            X_validation = X[:, emulator_validation_indices]
-            yᵢ_validation = yᵢ[emulator_validation_indices]
+            validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
+            training_indices = [i for i in 1:M if !(i in validation_indices)]
+            X_validation = X[:, validation_indices]
+            yᵢ_validation = yᵢ[validation_indices]
         else
-            not_emulator_validation_indices = axes(X)[2]
+            training_indices = axes(X)[2]
         end
 
         k = kernel isa GaussianProcesses.Kernel ? deepcopy(kernel) : kernel[i]
 
-        predict = trained_gp_predict_function(X[:, not_emulator_validation_indices], 
-                                              yᵢ[not_emulator_validation_indices]; 
+        predict = trained_gp_predict_function(X[:, training_indices], 
+                                              yᵢ[training_indices]; 
                                               standardize_X = false, 
                                               zscore_limit = nothing, 
                                               kernel = k)
@@ -425,22 +452,104 @@ function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)),
         end
     end
 
-    return predicts
+    # prediction function
+
+    function predict(gauss_process, θ_transformed)
+
+        results = [predict(θ_transformed) for predict in predicts]
+        μ_gps = getindex.(results, 1) # length-k vector
+        Γ_gps = getindex.(results, 2) # length-k vector
+    
+        Γgp = [maximum([1e-10, v]) for v in Γ_gps] # prevent zero or infinitesimal negative values (numerical error)
+        Γgp = diagm(Γgp)
+
+        return μ_gps, Γgp
+    end
+    
+    return predict
+end
+
+# decorrelated_training_outputs, decomposition =
+# svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
+
+"""
+emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+
+# Arguments
+- `X`: (number of parameters) x (number of training samples) array of training samples.
+- `Ĝ`: (output size) x (number of training samples) array of targets.
+- `kernel`: GaussianProcesses.Kernel or Vector{<:GaussianProcesses.Kernel} of length equal to the output size.
+# Returns
+- `predicts`: (output size)-length vector of functions that map parameters to the corresponding coordinate in the output.
+"""
+function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+    @info "Training $k gaussian processes for the emulator."
+
+    # Values of the forward maps of each sample at index `i`
+    yᵢ = Ĝ[i, :]
+
+    # Reserve `Nvalidation` representative samples for the emulator
+    # We will sort `yᵢ` and take evenly spaced samples between the upper and
+    # lower quartiles so that the samples are representative.
+    yᵢ = Ĝ[1, :] # take i = 1s to get validation samples
+    M = length(yᵢ)
+    lq = Int(round(M/5)); uq = lq*4
+    decimal_indices = range(lq, uq, length = Nvalidation)
+    evenly_spaced_samples = Int.(round.(decimal_indices))
+    validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
+    training_indices = [i for i in 1:M if !(i in validation_indices)]
+
+    emulator_training_data = PairedDataContainer(X[:, training_indices], 
+                                                G[:, training_indices], 
+                                                data_are_columns = true)
+
+    emulator_validation_data = PairedDataContainer(X[:, validation_indices], 
+                                                G[:, validation_indices], 
+                                                data_are_columns = true)
+
+    gauss_process = GaussianProcess(GPPkg; kernel = k, noise_learn = true, alg_reg_noise = 1e-3)
+
+    build_models!(gauss_process, emulator_training_data)
+
+    optimize_hyperparameters!(gauss_process)
+
+    if Nvalidation > 0
+        yᵢ_validation = emulator_validation_data.inputs
+        ŷᵢ_validation, Γgp_validation_diag = predict(gauss_process, yᵢ_validation)
+
+        n_columns = 5
+        N_axes = k
+        n_rows = Int(ceil(N_axes / n_columns))
+        fig = Figure(resolution = (300n_columns, 350n_rows), fontsize = 8)
+        ax_coords = [(i, j) for j = 1:n_columns, i = 1:n_rows]
+        for i in 1:k
+            yᵢ_validation, ŷᵢ_validation, Γgp_validation_diag = result
+            r = round(Statistics.cor(yᵢ_validation, ŷᵢ_validation); sigdigits=2)
+            @info "Pearson R for predictions on reserved subset of training points for $(i)th entry in the transformed forward map output : $r"
+            ax = Axis(fig[ax_coords[i]...], xlabel = "True", 
+                                            xticks = LinearTicks(2),
+                                            ylabel = "Predicted",
+                                            title = "Index $i. Pearson R: $r")
+    
+            scatter!(ax, yᵢ_validation, ŷᵢ_validation)
+            lines!(ax, yᵢ_validation, yᵢ_validation; color=(:black, 0.5), linewidth=3)
+            errorbars!(yᵢ_validation, ŷᵢ_validation, sqrt.(Γgp_validation_diag), color = :red, linewidth=2)
+            save(joinpath(dir, "emulator_validation_performance_linear_linear.png"), fig)
+        end
+    end
+
+    return emulator_training_data, gauss_process
 end
 
 function nll_unscaled(problem::EmulatorSamplingProblem, θ::Vector{<:Real}; normalized = true)
 
-    @unpack predicts, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
+    @unpack model, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ = problem
 
-    θ_transformed = normalized ? θ : [normalize_transform(θ, input_normalization)...] # single column matrix to vector
+    θ_transformed = normalized ? θ : normalize_transform(θ, input_normalization) # single column matrix
     θ_untransformed = normalized ? inverse_normalize_transform(θ, input_normalization) : θ
 
-    results = [predict(θ_transformed) for predict in predicts]
-    μ_gps = getindex.(results, 1) # length-k vector
-    Γ_gps = getindex.(results, 2) # length-k vector
-
-    Γgp = [maximum([1e-10, v]) for v in Γ_gps] # prevent zero or infinitesimal negative values (numerical error)
-    Γgp = diagm(Γgp)
+    μ_gps, Γgp = predict(model, θ_transformed)
+    Γgp = Γgp[1]
 
     return evaluate_objective(problem, θ_untransformed, μ_gps; Γgp)
 end
@@ -482,3 +591,27 @@ function nll_unscaled(problem::ModelSamplingProblem, θ; normalized = true)
 
     return Φs
 end
+
+# Scaled negative log likelihood functions used for sampling
+nll(problem::EmulatorSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ problem.min_loss
+nll(problem::ModelSamplingProblem, θ; normalized = true) = sum.(nll_unscaled(problem, θ; normalized)) ./ problem.min_loss
+
+# Log likelihood
+# Assumes the input is a single parameter set; not a vector of parameter sets
+(problem::EmulatorSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
+(problem::ModelSamplingProblem)(θ) = -nll(problem, θ; normalized = true)
+
+# begin
+#     @info "Benchmarking GP training time."
+#     n_sampless = 50:10:500
+#     gp_train_times = []
+#     yᵢ = Ĝ[1, :]
+#     for n_train_samples in ProgressBar(n_sampless)
+#         time = @elapsed trained_gp_predict_function(X[:, 1:n_train_samples], yᵢ[1:n_train_samples]; standardize_X = false, zscore_limit = nothing)
+#         push!(gp_train_times, time)
+#     end
+#     fig = CairoMakie.Figure()
+#     ax = Axis(fig[1,1]; title="Benchmarking: GP Training Time vs. Number of Training Samples", xlabel="Number of Training Samples", ylabel="Time to Optimize GP Kernel on CPU (s)")
+#     scatter!(n_sampless, Float64.(gp_train_times))
+#     save(joinpath(dir, "benchmark_gp_train_time.png"), fig)
+# end
