@@ -17,7 +17,7 @@ function inverse_problem(observations::BatchedSyntheticObservations, N_ensemble,
 end
 
 # Creates a vector of inverse problems each with 
-function inverse_problem_sequence(observations::BatchedSyntheticObservations, N_ensemble, free_parameters, output_map, closure, Δt)
+function inverse_problem_sequence(observations::BatchedSyntheticObservations, N_ensemble, free_parameters, output_map, closure, Δt, architecture)
 
     ips = []
     for obs in observations.observations
@@ -55,10 +55,10 @@ function inverse_problem_sequence(observations::BatchedSyntheticObservations, N_
 end
 
 # Takes a vector of SyntheticObservations or BatchedSyntheticObservations representing LES of various resolutions
-function estimate_noise_covariance(obsns_various_resolutions, times; case = 1, output_map=ConcatenatedOutputMap())
-    if case != 0
-        obsns_various_resolutions = [observations.observations[case] for observations in obsns_various_resolutions]
-    end
+function estimate_noise_covariance(obsns_various_resolutions, times; output_map=ConcatenatedOutputMap())
+    # if case != 0
+    #     obsns_various_resolutions = [observations.observations[case] for observations in obsns_various_resolutions]
+    # end
     # Nobs = Nz * (length(times) - 1) * sum(length.(getproperty.(representative_observations, :forward_map_names)))
     noise_covariance = estimate_η_covariance(output_map, obsns_various_resolutions)
     noise_covariance = noise_covariance + 0.01 * I(size(noise_covariance,1)) * mean(abs, noise_covariance) # prevent zeros

@@ -16,11 +16,11 @@ if datadep
     six_day_suite_path_2m(case) = "six_day_suite_2m/$(case)_instantaneous_statistics.jld2"
 
     # Nz = 64
-    two_day_suite_path_4m(case) = "two_day_suite_4m/$(case)_instantaneous_statistics.jld2"
-    four_day_suite_path_4m(case) = "four_day_suite_4m/$(case)_instantaneous_statistics.jld2"
-    six_day_suite_path_4m(case) = "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+    two_day_suite_path_4m(case) = @datadep_str "two_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+    four_day_suite_path_4m(case) = @datadep_str "four_day_suite_4m/$(case)_instantaneous_statistics.jld2"
+    six_day_suite_path_4m(case) = @datadep_str "six_day_suite_4m/$(case)_instantaneous_statistics.jld2"
 
-    dp = [two_day_suite_path_1m, two_day_suite_path_2m, two_day_suite_path_4m]
+    training_path_fns_for_noise_cov_estimate = [two_day_suite_path_1m, two_day_suite_path_2m, two_day_suite_path_4m]
     regrid = (1, 1, 32)
     description = "Calibrating to 2-day suite."
 
@@ -53,27 +53,39 @@ else
     one_day_suite_path_2m(case) = data_dir * "/one_day_suite/2m/$(case)_instantaneous_statistics.jld2"
     one_day_suite_path_4m(case) = data_dir * "/one_day_suite/4m/$(case)_instantaneous_statistics.jld2"
 
-    dp = [one_day_suite_path_1m, one_day_suite_path_2m, one_day_suite_path_4m]
-    regrid = RectilinearGrid(size=48; z=(-256, 0), topology=(Flat, Flat, Bounded))
+    training_path_fns_for_noise_cov_estimate = [one_day_suite_path_1m, one_day_suite_path_2m, one_day_suite_path_4m]
+
+    regrid_coarse = 16 # 16 m
+    regrid_med = 32 # 8 m
+    regrid_fine = 64 # 4 m
+
+    # regrid = (regrid_coarse, regrid_med, regrid_fine)
+    weights = (2, 1, 0.5)
+    # weights = (1,)
+    Δt = 10minutes
+
+    # regrid = RectilinearGrid(size=48; z=(-256, 0), topology=(Flat, Flat, Bounded))
+    regrid = [RectilinearGrid(size=size; z=(-256, 0), topology=(Flat, Flat, Bounded)) for size in (regrid_coarse, regrid_med, regrid_fine)]
+
     description = "Calibrating to 1-day suite."
 
-    training_times = [0.125days, 0.25days, 0.5days, 0.75days, 1.0days]
+    training_times = [0.125days, 0.5days, 0.75days, 1.0days]
     testing_times = [0.25days, 0.5days, 1.0days, 2.0days]
 
     training_path_fn = one_day_suite_path_2m
     # testing_path_fn = two_day_suite_path_2m
 
-    transformation = (b = Transformation(normalization=RescaledZScore(2.0), space=SpaceIndices(; z=12:48)),
-                    u = Transformation(normalization=ZScore(), space=SpaceIndices(; z=12:48)),
-                    v = Transformation(normalization=ZScore(), space=SpaceIndices(; z=12:48)),
-                    e = Transformation(normalization=RescaledZScore(0.01), space=SpaceIndices(; z=24:48)),
+    transformation = (b = Transformation(normalization=RescaledZScore(1.0)),
+                    u = Transformation(normalization=ZScore()),
+                    v = Transformation(normalization=ZScore()),
+                    e = Transformation(normalization=RescaledZScore(0.01)),
                     )
 
     fields_by_case = Dict(
+                    "med_wind_med_cooling" => (:b, :u, :v, :e),
                     "strong_wind" => (:b, :u, :v, :e),
                     "strong_wind_no_rotation" => (:b, :u, :e),
                     "strong_wind_weak_cooling" => (:b, :u, :v, :e),
-                    "med_wind_med_cooling" => (:b, :u, :v, :e),
                     "weak_wind_strong_cooling" => (:b, :u, :v, :e),
                     "free_convection" => (:b, :e),
                     )
