@@ -1,4 +1,6 @@
 using CUDA: @allowscalar
+using ParameterEstimocean.InverseProblems: AbstractInverseProblem
+using ParameterEstimocean.Parameters: build_parameters_named_tuple
 
 """
     visualize_vertical!(ip::InverseProblem, parameters;
@@ -191,9 +193,11 @@ function visualize_vertical!(ip::InverseProblem, parameters;
 
                         θ_vector_named_tuple = n == 1 ? [θ] : θ
 
-                        dep_params(θ) = NamedTuple(name => value(θ) for (name, value) in pairs(ip.free_parameters.dependent_parameters))
+                        all_θ = [build_parameters_named_tuple(ip.free_parameters, θ; with_dependent_parameters=true) for θ in θ_vector_named_tuple]
 
-                        all_θ = [merge(θ, dep_params(θ)) for θ in θ_vector_named_tuple]
+                        # dep_params(θ) = NamedTuple(name => value(θ) for (name, value) in pairs(ip.free_parameters.dependent_parameters))
+
+                        # all_θ = [merge(θ, dep_params(θ)) for θ in θ_vector_named_tuple]
 
                         ls = length_scales(ip, p.field_time_serieses, last(snapshots); parameters = all_θ)[field_name]
 

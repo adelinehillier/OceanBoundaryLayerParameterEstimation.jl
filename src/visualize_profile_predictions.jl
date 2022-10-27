@@ -380,9 +380,9 @@ function visualize!(ip::InverseProblem, parameters;
                 times = @. round((targets[snapshots]) / 86400, sigdigits=2)
 
                 # legendlabel(time) = vcat([observation_label * ", $time d"], [l * ", $time d" for l in parameter_labels])
-                # legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
+                legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
 
-                legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
+                # legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
 
                 Legend(fig[2,1:2], lins, vcat([legendlabel(time) for time in times]...), nbanks=1, labelsize=40)
                 # Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=3, labelsize=40)
