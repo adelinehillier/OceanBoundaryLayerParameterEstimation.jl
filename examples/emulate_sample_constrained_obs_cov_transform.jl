@@ -5,7 +5,8 @@ using GaussianProcesses
 using ParameterEstimocean.PseudoSteppingSchemes: trained_gp_predict_function, ensemble_array
 using ParameterEstimocean.Transformations: ZScore, normalize!, denormalize!
 using FileIO
-using CalibrateEmulateSample.Emulators: svd_transform
+using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample
 
 include("emulate_sample_utils.jl")
 include("emulate_sample_plotting_functions.jl")
@@ -21,27 +22,36 @@ variable_transformation_type = "priors"
 - calibration_outputs: OffsetArray of arrays of size (output size) x (ensemble size) denoting the recorded 
                         outputs from calibration for each iteration from 0 to iterations-1 (eki only saves the parameters). 
                         i.e. [G₁, G₂, ..., Gₙ]
-  
+- n: Number of iterations from calibration to include for emulation
+- chain_length_emulate: Length per chain for sampling the emulated forward map
+- burn_in_emulate: Burn-in per chain for sampling the emulated forward map
+- chain_length: Length per chain for sampling the true forward map
+- burn_in: Burn-in per chain for sampling the true forward map
+
 """
 function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
                     case = 0,
                     Nvalidation = 0,
-                    n = length(eki.iteration_summaries) - 1, # number of iterations from calibration to include for emulation
+                    n = length(eki.iteration_summaries) - 1,
                     directory = main_directory,
                     variable_transformation_type = "priors",
-                    )
+                    retained_svd_frac = 1.0,
+                    chain_length_emulate = 20000,
+                    burn_in_emulate = 5000,
+                    chain_length = 1000,
+                    burn_in = 15,
+                )
 
     isdir(directory) || mkpath(directory)
-
     plot_superimposed_forward_map_output(eki; directory)
 
-    transformation = problem_transformation(training.free_parameters; type=variable_transformation_type)
+    free_parameters = inverse_problem.free_parameters
+    transformation = problem_transformation(free_parameters; type=variable_transformation_type)
 
-    # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to 
-    # iteration `n` by EKI. This will be the training data for 
-    # the GP emulator. We will filter out all failed particles.
+    # First, conglomerate all samples generated t̶h̶u̶s̶ ̶f̶a̶r̶ up to iteration `n` by EKI.
+    # This will be the training data for the GP emulator.
     X = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(n-1)]...) # constrained
-    G = hcat(outputs[0:(n-1)]...)
+    G = hcat(calibration_outputs[0:(n-1)]...)
 
     # Filter out all failed particles, if any
     nan_values = vec(mapslices(any, isnan.(G); dims=1)) # bitvector
@@ -49,33 +59,32 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
     X = X[:, not_nan_indices]
     G = G[:, not_nan_indices]
 
-    # Transform forward map output samples to uncorrelated space.
-    # This will allow us to use the uncertainty estimates from each 
-    # GP in the emulator.
-    k = 20
+    # Transform forward map output samples to uncorrelated space. This will allow us
+    # to use the uncertainty estimates from each GP in the emulator.
     y = eki.mapped_observations
     Γy = noise_covariance
-    # Ĝ, ŷ, Γ̂y, project_decorrelated = truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
 
-    # function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, retained_svd_frac)
-    retained_svd_frac = 0.999
-    Ĝ, decomposition = svd_transform(G, Γy, retained_svd_frac)
-    n, k = size(Ĝ)
-    Γ̂y = I(k)
+    Ĝ, decomposition = CalibrateEmulateSample.Emulators.svd_transform(G, Γy; retained_svd_frac)
+    k, n = size(Ĝ)
+    Γ̂y = UniformScaling{eltype(y)}(k)
 
-    project_decorrelated(data, decomp) = Diagonal(1.0 ./ sqrt.(decomp.S))[1:k, 1:k] * decomp.Vt[1:k, :] * data
+    @show n, k
 
-    ŷ = project_decorrelated(y)
+    # project_decorrelated(data, decomp) = Diagonal(1.0 ./ sqrt.(decomp.S))[1:k, 1:k] * decomp.Vt[1:k, :] * data
+    # project_decorrelated(data, decomp) = decomp.V * Diagonal(sqrt.(decomp.S)) * Diagonal(1.0 ./ sqrt.(decomp.S)) * decomp.Vt * data
+    project_decorrelated(data, decomp) = Diagonal(1.0 ./ sqrt.(decomp.S)) * decomp.Vt * data
 
-    α = 1e-3 # observation noise variance
+    ŷ = project_decorrelated(y[:,:], decomposition)
 
-    emulator_training_data = PairedDataContainer(X, G, data_are_columns = true)
-    emulator_validation_data = PairedDataContainer(X_validation, G_validation, data_are_columns = true)
+    if retained_svd_frac == 1.0
+        reverse_transformed_ŷ, reverse_transformed_Γ̂y = CalibrateEmulateSample.Emulators.svd_reverse_transform_mean_cov(ŷ, ones(k)[:,:], decomposition)
+        reverse_transformed_Ĝ, _ = CalibrateEmulateSample.Emulators.svd_reverse_transform_mean_cov(Ĝ, ones(k, n), decomposition)
 
-    reverse_transformed_ŷ, reverse_transformed_Γ̂y = svd_reverse_transform_mean_cov(ŷ, ones(k), decomposition)
-    @assert y == reverse_transformed_ŷ
-    @assert Γy == reverse_transformed_Γ̂y[1]
-    # transformed_μ, transformed_σ2 = svd_reverse_transform_mean_cov(μ, σ2, decomposition)
+        @assert G ≈ reverse_transformed_Ĝ
+        @assert y ≈ reverse_transformed_ŷ
+        @assert Γy ≈ reverse_transformed_Γ̂y[1]
+        # transformed_μ, transformed_σ2 = svd_reverse_transform_mean_cov(μ, σ2, decomposition)
+    end
 
     # Reserve `Nvalidation` samples for validation.
     Nvalidation = 0
@@ -92,7 +101,7 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
 
     X = normalize_transform(X, normalization_transformation) #before: normalize!(X, zscore_X)
 
-    model_sampling_problem = ModelSamplingProblem(training, normalization_transformation, ŷ, Γ̂y)
+    model_sampling_problem = ModelSamplingProblem(inverse_problem, normalization_transformation, ŷ, Γ̂y; min_loss = 1)
 
     ###
     ### Emulation
@@ -100,19 +109,11 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
 
     # The likelihood we wish to sample with MCMC is π(θ|y)=exp(-Φ(θ)), the posterior density on θ given y.
     # The MCMC sampler takes in a function `nll` which maps θ to the negative log likelihood value Φ(θ). 
-    # In the following example, we use a GP to emulate the forward map output G. 
+    # In the following example, we use several GPs to emulate the forward map output G. 
 
     # We will take advantage of the parallelizability of our forward map
-    # by running parallel chains of MCMC.
-    n_chains = N_ensemble
-
-    # Length and burn-in length per chain for sampling the emulated forward map
-    chain_length_emulate = 20000
-    burn_in_emulate = 5000
-
-    # Length and burn-in length per chain for sampling the true forward map
-    chain_length = 1000
-    burn_in = 15
+    # by running parallel chains of MCMC in full capacity.
+    n_chains = size(X, 1)
 
     Nparam = length(free_parameters.names)
 
@@ -123,9 +124,35 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
     kernel = [SE(ll, lσ) + Noise(log(std)) for std in std(Ĝ; dims=2)]
     # predicts = [trained_gp_predict_function(Ĝ[i,:]) for i in size(Ĝ,1)]
     # vector of predict functions. Ĝ is k x Nsamples
-    emulator_training_data, gauss_process = emulate(X, Ĝ; k, Nvalidation, kernel)
 
-    emulator_sampling_problem = EmulatorSamplingProblem(gauss_process, training, normalization_transformation, ŷ, Γ̂y)
+    # Reserve `Nvalidation` representative samples for the emulator
+    # We will sort `norms` and take evenly spaced samples between the upper and
+    # lower quintiles so that the samples are representative.
+    norms = mapslices(g -> norm(ŷ, g), Ĝ, dims = 2)
+    M = length(ŷ); lq = Int(round(M/5)); uq = lq*4
+    decimal_indices = range(lq, uq, length = Nvalidation)
+    evenly_spaced_samples = Int.(round.(decimal_indices))
+    validation_indices = sort(eachindex(norms), by = i -> norms[i])[evenly_spaced_samples]
+
+    emulator_training_data, gauss_process = emulate(X, Ĝ; k, validation_indices, kernel, α = 1e-3)
+
+    emulator_sampling_problem = EmulatorSamplingProblem(gauss_process, inverse_problem, normalization_transformation, ŷ, Γ̂y; min_loss = 1)
+
+    ###
+    ### See what's compromised during PCA and emulation
+    ###
+
+    fig = Figure(resolution = (300, 300), fontsize = 10)
+    ax = Axis(fig[1,1])
+
+    objective_values_before_dim_reduction = vcat([summary.objective_values for sumary in eki.iteration_summaries]...)
+    objective_values_after_dim_reduction = nll(model_sampling_problem, X; normalized = true)
+    objective_values_predicted_by_GP = nll(model_sampling_problem, X[:, validation_indices]; normalized = true)
+
+    scatter!(ax, objective_values_predicted_by_GP, objective_values_before_dim_reduction[validation_indices], markersize = 4, color=:red)
+    scatter!(ax, objective_values_after_dim_reduction, objective_values_before_dim_reduction, markersize = 2, color=:black)
+
+    save(joinpath(directory, "original_loss_vs_dim_reduced_loss.png"), fig)
 
     ###
     ### Sample from emulated loss landscape using parallel chains of MCMC
@@ -144,7 +171,7 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
     begin
         # Estimate the minimum loss for the model
         X_full = hcat([constrained_ensemble_array(eki, iter) for iter in 0:(eki.iteration-1)]...) # constrained
-        G_full = hcat(outputs[0:(eki.iteration-1)]...)
+        G_full = hcat(calibration_outputs[0:(eki.iteration-1)]...)
         Ĝ_full = project_decorrelated(G_full)
         Φ_full_original_output_space = vcat([eki.iteration_summaries[iter].objective_values for iter in 0:(eki.iteration-1)]...)
         Φ_full = [evaluate_objective(model_sampling_problem, X_full[:, j], Ĝ_full[:, j]) for j in axes(X_full)[2]]
@@ -157,6 +184,24 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
         objective_values_emulator = sum.(Φ_full_emulated)
         min_loss_emulated = minimum(objective_values_emulator) # avoid global variable for performance
     end
+
+    # inverse_problem :: InverseProblem
+    # input_normalization :: NormalizationTransformation
+    # Γ̂y :: M
+    # ŷ :: M
+    # inv_sqrt_Γθ :: M
+    # μθ :: V
+
+    # model :: P
+    # input_normalization :: NormalizationTransformation
+    # Γ̂y :: M
+    # ŷ :: M
+    # inv_sqrt_Γθ :: M
+    # μθ :: V
+    # min_loss :: S
+
+    model_sampling_problem = ModelSamplingProblem()
+    emulator_sampling_problem = ModelSamplingProblem()
 
     # analyze_loss_components(Φ_full, Φ_full_emulated; directory)
 
