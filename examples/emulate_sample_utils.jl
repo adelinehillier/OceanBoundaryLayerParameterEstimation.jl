@@ -1,4 +1,5 @@
 using UnPack
+using CalibrateEmulateSample.Emulators: GaussianProcess, GPJL
 
 """
     truncate_forward_map_to_length_k_uncorrelated_points(k) 
@@ -276,10 +277,10 @@ function inverse_normalize_transform(θ, nt::NormalizationTransformation)
     return θ
 end
 
-struct ModelSamplingProblem{V <: AbstractVector, M <: AbstractMatrix, S}
-    inverse_problem :: InverseProblem
+struct ModelSamplingProblem{U, M <: AbstractMatrix, V <: AbstractVector, S}
+    inverse_problem :: AbstractInverseProblem
     input_normalization :: NormalizationTransformation
-    Γ̂y :: M
+    Γ̂y :: U
     ŷ :: M
     inv_sqrt_Γθ :: M
     μθ :: V
@@ -292,16 +293,14 @@ function ModelSamplingProblem(inverse_problem, input_normalization, ŷ, Γ̂y; 
     μθ = prior_means(fp)
     Γθ = diagm( prior_variances(fp) )
     inv_sqrt_Γθ = inv(sqrt(Γθ))
-
-    @show typeof.([Γ̂y, ŷ, inv_sqrt_Γθ, μθ])
     
     return ModelSamplingProblem(inverse_problem, input_normalization, Γ̂y, ŷ, inv_sqrt_Γθ, μθ, min_loss)
 end
 
-struct EmulatorSamplingProblem{P, V, M <: AbstractMatrix, S}
+struct EmulatorSamplingProblem{P, U, V, M <: AbstractMatrix, S}
     model :: P
     input_normalization :: NormalizationTransformation
-    Γ̂y :: M
+    Γ̂y :: U
     ŷ :: M
     inv_sqrt_Γθ :: M
     μθ :: V
@@ -482,32 +481,20 @@ emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
 # Returns
 - `predicts`: (output size)-length vector of functions that map parameters to the corresponding coordinate in the output.
 """
-function emulate(X, Ĝ; k = 20, Nvalidation = 0, kernel = SE(zeros(size(X, 1)), 0.0))
+function emulate(X, Ĝ; k = 20, validation_indices = [], kernel = SE(zeros(size(X, 1)), 0.0), α = 1e-3)
     @info "Training $k gaussian processes for the emulator."
-
-    # Values of the forward maps of each sample at index `i`
-    yᵢ = Ĝ[i, :]
-
-    # Reserve `Nvalidation` representative samples for the emulator
-    # We will sort `yᵢ` and take evenly spaced samples between the upper and
-    # lower quartiles so that the samples are representative.
-    yᵢ = Ĝ[1, :] # take i = 1s to get validation samples
-    M = length(yᵢ)
-    lq = Int(round(M/5)); uq = lq*4
-    decimal_indices = range(lq, uq, length = Nvalidation)
-    evenly_spaced_samples = Int.(round.(decimal_indices))
-    validation_indices = sort(eachindex(yᵢ), by = i -> yᵢ[i])[evenly_spaced_samples]
+    
     training_indices = [i for i in 1:M if !(i in validation_indices)]
 
-    emulator_training_data = PairedDataContainer(X[:, training_indices], 
-                                                G[:, training_indices], 
-                                                data_are_columns = true)
-
     emulator_validation_data = PairedDataContainer(X[:, validation_indices], 
-                                                G[:, validation_indices], 
-                                                data_are_columns = true)
+                                                   Ĝ[:, validation_indices], 
+                                                   data_are_columns = true)
 
-    gauss_process = GaussianProcess(GPPkg; kernel = k, noise_learn = true, alg_reg_noise = 1e-3)
+    emulator_training_data = PairedDataContainer(X[:, training_indices], 
+                                                 Ĝ[:, training_indices], 
+                                                 data_are_columns = true)
+
+    gauss_process = GaussianProcess(GPJL(), kernel = k, noise_learn = true, alg_reg_noise = α)
 
     build_models!(gauss_process, emulator_training_data)
 
@@ -579,14 +566,8 @@ function nll_unscaled(problem::ModelSamplingProblem, θ; normalized = true)
 
     Φs = []
     for j in axes(θ)[2]
-
-        # if any(θ[:, j] .< 0)
-        #     push!(Φs, Inf)
-        # else
-            push!(Φs, evaluate_objective(problem, θ[:, j], Ĝ[:, j]))
-        # end
+        push!(Φs, evaluate_objective(problem, θ[:, j], Ĝ[:, j]))
     end
-
     # Φs = [evaluate_objective(problem, θ[:, j], Ĝ[:, j]) for j in axes(θ)[2]]
 
     return Φs
