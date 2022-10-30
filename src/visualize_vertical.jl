@@ -53,7 +53,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
     pred_band_colors = [[colorant"#808080", colorant"#FFB000"], [colorant"#808080", colorant"#785EF0"]]
     pred_colors =  [[colorant"#808080", colorant"#785EF0"], [colorant"#808080", colorant"#648FFF"]]
     field_colors = ["#E69F00", "#56B4E9", :black, "#009E73"] # for {c, u, e}
-    internals_colors = Dict(:ℓᴺ => "#648FFF", 
+    internals_colors = Dict(:ℓᵇ => "#648FFF", 
                             :ℓˢ => "#785EF0", 
                             :ℓᵟ => "#DC267F", 
                             :d => "#FE6100")
@@ -201,14 +201,15 @@ function visualize_vertical!(ip::InverseProblem, parameters;
 
                         ls = length_scales(ip, p.field_time_serieses, last(snapshots); parameters = all_θ)[field_name]
 
-                        Ri = arch_array(CPU(), ls.Ri)
-                        σᵩ = [stable_mixing_scale(Ri[i, j, k], all_θ[i], field_name) for (i,j,k) in zip(axes(Ri)...)]
+                        # Ri = arch_array(CPU(), ls.Ri)
+                        # σᵩ = [stable_mixing_scale(Ri[i, j, k], all_θ[i], field_name) for (i,j,k) in zip(axes(Ri)...)]
+                        # dominant_length_scale = max.(ls.ℓᵟ, σᵩ .* min.(ls.d, ls.ℓˢ, ls.ℓᵇ))
+                        dominant_length_scale = max.(ls.ℓᵟ, min.(ls.d, ls.ℓˢ, ls.ℓᵇ))
 
-                        dominant_length_scale = max.(ls.ℓᵟ, σᵩ .* min.(ls.d, ls.ℓˢ, ls.ℓᴺ))
                         xlims!(ax_internals, 0, maximum(dominant_length_scale))
                         
                         # ~~~~~~~ Length scale profile plot
-                        relevant_scales = iszero(Qᵘ) ? [:ℓᴺ, :ℓᵟ, :d] : [:ℓᴺ, :ℓˢ, :ℓᵟ, :d]
+                        relevant_scales = iszero(Qᵘ) ? [:ℓᵇ, :ℓᵟ, :d] : [:ℓᵇ, :ℓˢ, :ℓᵟ, :d]
                         if internals_to_plot == p_index
                             for (iq, q_name) in enumerate(relevant_scales) # each Nensemble x Nobservations x Nz
                                 q = getproperty(ls, q_name)  # size Nensemble x 1 x Nz
@@ -258,7 +259,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
 
                         # ~~~~~~~ Dominant length scale pie chart
                         frequency_dominance = [sum(getproperty(ls, q_name) .== dominant_length_scale) for q_name in relevant_scales]
-                        pie!(ax_freq, frequency_dominance; color = [(internals_colors[q_name], 0.3) for q_name in relevant_scales], strokecolor = :white, label=["ℓᴺ", "ℓˢ", "ℓᵟ", "d"])
+                        pie!(ax_freq, frequency_dominance; color = [(internals_colors[q_name], 0.3) for q_name in relevant_scales], strokecolor = :white, label=["ℓᵇ", "ℓˢ", "ℓᵟ", "d"])
                     end
                 end
 
