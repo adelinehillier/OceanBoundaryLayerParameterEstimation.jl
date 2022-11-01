@@ -17,15 +17,21 @@ transformation = (b = Transformation(normalization=ZScore()),
                   v = Transformation(normalization=ZScore()),
                   e = Transformation(normalization=RescaledZScore(1e-1)))
 
-function SyntheticObservationsBatch(path_fn, times; transformation=transformation, datadep = false, field_names = (:b, :u, :v, :e), fields_by_case=fields_by_case, regrid=nothing)
+function SyntheticObservationsBatch(path_fn, times; 
+                                    regrid = nothing,
+                                    field_names = (:b, :u, :v, :e),
+                                    transformation = transformation,
+                                    fields_by_case = fields_by_case,
+                                    cases = keys(fields_by_case)
+                                 )
 
    observations = Vector{SyntheticObservations}()
 
-   for (case, forward_map_names) in zip(keys(fields_by_case), values(fields_by_case))
+   for (case, case_name) in enumerate(cases)
 
-      data_path = path_fn(case)
-      data_path = datadep ? (@datadep_str data_path) : data_path
-      observation = SyntheticObservations(data_path; transformation, times, field_names, forward_map_names, regrid)
+      data_path = path_fn(case_name)
+      forward_map_names = fields_by_case[case_name]
+      observation = SyntheticObservations(data_path; times, field_names, regrid, transformation, forward_map_names)
 
       push!(observations, observation)
    end
