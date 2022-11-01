@@ -100,7 +100,7 @@ function length_scales(inverse_problem, field_time_serieses, time_index; paramet
         params = isnothing(parameters) ? [nothing for _ in 1:Nx] : parameters
 
         field_data[:d] = [wall_vertical_distanceᶜᶜᶠ(i, j, k, grid) for i=1:Nx, j=1:Ny, k=1:Nz]
-        field_data[:ℓᴺ] = [Cᵇ_(field_name, params[i]) * buoyancy_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
+        field_data[:ℓᵇ] = [Cᵇ_(field_name, params[i]) * buoyancy_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
         @allowscalar field_data[:ℓˢ] = [Cˢ_(field_name, params[i]) * shear_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
         @allowscalar field_data[:ℓᵟ] = [Cᵟ_(field_name, params[i]) * Δzᶜᶜᶠ(i, j, k, grid) for i=1:Nx, j=1:Ny, k=1:Nz]
         @allowscalar field_data[:Ri] = [Riᶜᶜᶠ(i, j, k, grid, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]

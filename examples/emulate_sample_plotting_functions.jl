@@ -40,8 +40,11 @@ end
 function plot_marginal_distributions(parameter_names, unscaled_chain_X, unscaled_chain_X_emulated; directory=pwd(), show_means=true, n_columns=3)
 
     Nparam = length(parameter_names)
-    std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
-    std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    # std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
+    # std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    std1 = std(unscaled_chain_X, dims=2)
+    std2 = std(unscaled_chain_X_emulated, dims=2)
+    
     bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
 
     hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_names; 
