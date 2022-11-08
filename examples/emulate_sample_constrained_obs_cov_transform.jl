@@ -235,7 +235,7 @@ function emulate(eki, inverse_problem, calibration_outputs, noise_covariance;
     return emulator_sampling_problem, model_sampling_problem, X, normalization_transformation
 end
 
-function make_seed(eki)
+function make_seed(eki, X, normalization_transformation)
     # Ensemble covariance across all generated samples -- in the transformed (unbounded) space
     cov_θθ_all_iters = cov(X, X, dims = 2, corrected = true)
     C = Matrix(Hermitian(cov_θθ_all_iters))
@@ -263,7 +263,7 @@ end
 ##
 ## Sample from objective using parallel chains of MCMC
 ##
-function sample(seed_X, free_parameters, sampling_problem, X, normalization_transformation; 
+function sample(seed_X, free_parameters, sampling_problem, normalization_transformation; 
                         directory = main_directory,
                         chain_length = 1000,
                         burn_in = 15,
@@ -272,11 +272,9 @@ function sample(seed_X, free_parameters, sampling_problem, X, normalization_tran
 
     # We will take advantage of the parallelizability of our forward map
     # by running parallel chains of MCMC in full capacity.
-    if isnothing(n_chains)
-        n_chains = size(X, 1)
+    if !isnothing(n_chains)
+        seed_X = seed_X[1:n_chains]
     end
-
-    seed_X = seed_X[1:n_chains]
 
     chain_X, chain_nll = markov_chain(θ -> nll(sampling_problem, θ), proposal, 
                                     seed_X, chain_length; burn_in, n_chains, bounder)
