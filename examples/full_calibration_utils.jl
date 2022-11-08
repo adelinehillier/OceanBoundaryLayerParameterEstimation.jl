@@ -9,14 +9,14 @@ subscript_guide = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈"
 int_to_subscript(x) = string([getindex(subscript_guide, parse(Int64, c)+1) for c in string(x)]...)
 
 # Creates a singular inverse problem containing all observations in `observations`
-function inverse_problem(observations::BatchedSyntheticObservations, N_ensemble, free_parameters, output_map, closure, Δt)
+function inverse_problem(observations::BatchedSyntheticObservations, free_parameters; architecture = CPU(), N_ensemble = 100, output_map = ConcatenatedOutputMap(), closure = CATKEVerticalDiffusivity(), Δt=10minutes)
 
     simulation = lesbrary_ensemble_simulation(observations; Nensemble = N_ensemble, architecture, closure, Δt)
     ip = InverseProblem(observations, simulation, free_parameters; output_map)
     return ip
 end
 
-# Creates a vector of inverse problems each with 
+# Creates a vector of inverse problems corresponding to each observation in `observations`
 function inverse_problem_sequence(observations::BatchedSyntheticObservations, N_ensemble, free_parameters, output_map, closure, Δt, architecture)
 
     ips = []
@@ -65,7 +65,7 @@ function estimate_noise_covariance(obsns_various_resolutions, times; output_map=
     return noise_covariance  
 end
 
-function plot_superimposed_forward_map_output(eki; directory=pwd())
+function plot_superimposed_forward_map_output(eki; directory=pwd(), G_prior=nothing, G_final=nothing)
     θ̅₀ = eki.iteration_summaries[0].ensemble_mean
     n = length(eki.iteration_summaries) - 1
     θ̅ₙ = eki.iteration_summaries[end].ensemble_mean
@@ -82,10 +82,26 @@ function plot_superimposed_forward_map_output(eki; directory=pwd())
     axislegend(ax)
     hidexdecorations!(ax)
 
+    if !isnothing(G_prior)
+        μ = mean(G_prior, dims=2)
+        σ = std(G_prior, dims=2)
+        ylower = μ .- σ
+        yupper = μ .+ σ
+        band!(ax, ylower, yupper; color=(:black, 0.1), label = "G(Θ₀)")
+    end
+
     ax2 = Axis(f[2,1])
     lines!(ax2, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
     lines!(ax2, x_axis, Gₙ; label = "G(θ̅$(int_to_subscript(n)))", linewidth=4, color=:black)
     axislegend(ax2)
+
+    if !isnothing(G_final)
+        μ = mean(G_final, dims=2)
+        σ = std(G_final, dims=2)
+        ylower = μ .- σ
+        yupper = μ .+ σ
+        band!(ax2, ylower, yupper; color=(:black, 0.1), label = "G(Θ$(int_to_subscript(n))")
+    end
 
     save(joinpath(directory, "superimposed_forward_map_output.png"), f)
 end
