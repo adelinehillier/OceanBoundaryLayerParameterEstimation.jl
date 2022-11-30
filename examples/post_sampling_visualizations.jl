@@ -3,10 +3,13 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 ###
 ### Compute optimal parameters
 ###
-optimal_parameters_emulated = unscaled_chain_X_emulated[argmin(chain_nll_emulated)]
-optimal_parameters_true = unscaled_chain_X[argmin(chain_nll)]
+# optimal_parameters_emulated = unscaled_chain_X_emulated[argmin(chain_nll_emulated)]
+# optimal_parameters_true = unscaled_chain_X[argmin(chain_nll)]
+optimal_parameters_emulated = unscaled_chain_X_emulated[:, argmin(chain_nll_emulated)]
+optimal_parameters_true = unscaled_chain_X[:, argmin(chain_nll)]
 
 optimal_parameters_eki = collect(eki.iteration_summaries[end].ensemble_mean)
+
 ###
 ### Visualize loss landscape
 ###
@@ -90,10 +93,14 @@ begin
     plot_loss_contour!(ga1, eki, xc, yc, zc_eki, pname1, pname2; plot_minimizer=true, title="EKI Objective Function")
     plot_eki_particles!(ga, eki, pname1, pname2; title="EKI Particle Traversal", last_iteration=n-1)
 
-    chain1_emulated = getindex.(unscaled_chain_X_emulated, pindex1)
-    chain2_emulated = getindex.(unscaled_chain_X_emulated, pindex2)
-    chain1 = getindex.(unscaled_chain_X, pindex1)
-    chain2 = getindex.(unscaled_chain_X, pindex2)
+    # chain1_emulated = getindex.(unscaled_chain_X_emulated, pindex1)
+    # chain2_emulated = getindex.(unscaled_chain_X_emulated, pindex2)
+    # chain1 = getindex.(unscaled_chain_X, pindex1)
+    # chain2 = getindex.(unscaled_chain_X, pindex2)
+    chain1_emulated = unscaled_chain_X_emulated[pindex1,:]
+    chain2_emulated = unscaled_chain_X_emulated[pindex2,:]
+    chain1 = unscaled_chain_X[pindex1,:]
+    chain2 = unscaled_chain_X[pindex2,:]
 
     unscaled_seed_X = inverse_normalize_transform(hcat(seed_X...), normalization_transformation)
 
@@ -111,7 +118,6 @@ begin
     plot_loss_contour!(gc1, eki, xc, yc, zc_emulated, pname1, pname2; plot_minimizer=true, title="Likelihood Function given Emulated Model\n(Reduced output space)")
     plot_mcmc_particles!(gb, chain1, chain2, chain1seed, chain2seed, best1, best2, pname1, pname2; title="MCMC Samples", set_lims=false)
     plot_mcmc_particles!(gc, chain1_emulated, chain2_emulated, chain1seed, chain2seed, best1_emulated, best2_emulated, pname1, pname2; title="MCMC Samples", set_lims=false)
-
 
     linkyaxes!(ga.content[3].content, gb.content[3].content)
     linkxaxes!(ga.content[3].content, gb.content[3].content)

@@ -7,11 +7,12 @@ using Colors
 include("visualize_profile_predictions_utils.jl")
 
 # Temporary hack -- couldn't get Makie to render LaTeX properly
-guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
+superscript_guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
+int_to_superscript(x) = string([getindex(superscript_guide, parse(Int64, c)+1) for c in string(x)]...)
 
 function observed_interior(field_time_serieses, field_name)
-    obsn = getproperty(field_time_serieses, field_name)
-    return view(arch_array(CPU(), obsn.data), 1,1,1:obsn.grid.Nz,:)
+    obs = getproperty(field_time_serieses, field_name)
+    return view(arch_array(CPU(), obs.data), 1,1,1:obs.grid.Nz,:)
 end
 
 function predicted_interior(field_time_serieses, field_name)
@@ -27,7 +28,7 @@ end
 function scaling_xlabel(data, info)
     om = order_of_magnitude(maximum(abs.(data)))
     scaling = 10^(-om)
-    om_string = string([getindex(guide, parse(Int64, c)+1) for c in string(abs(om))]...)
+    om_string = int_to_superscript(abs(om))
     om_prefix = om < 0 ? "⁻" : ""
     xlabel = string("$(info.name) (10$(om_prefix * om_string) $(info.units))")
 
@@ -42,11 +43,27 @@ end
 
 include("./visualize_vertical.jl")
 
-# function visualize_CATKE_internals!(ip::InverseProblem, parameters;
+function empty_plot!(fig_position)
+    ax = fig_position = Axis(fig_position)
+    hidedecorations!(ax)
+    hidespines!(ax, :t, :b, :l, :r)
+    return ax
+end
+
+# """
+#     visualize!(ip::InverseProblem, parameters;
+#                     field_names = [:u, :v, :b, :e],
+#                     directory = pwd(),
+#                     filename = "realizations.png"
+#                     )
+
+#     For visualizing 1-dimensional time series predictions.
+# """
+# function visualize!(ip::InverseProblem, parameters;
 #                     parameter_labels = ["Model"],
 #                     observation_label = "Observation",
 #                     multi_res_observations = [ip.observations],
-#                     field_names = [:u, :v, :b, :e],
+#                     field_names = [:v, :u, :b, :e],
 #                     directory = pwd(),
 #                     filename = "realizations.png"
 #                     )
@@ -55,11 +72,9 @@ include("./visualize_vertical.jl")
 
 #     model = ip.simulation.model
 
-#     n_fields = length(field_names)
-
 #     observations = to_batch(ip.observations)
 #     multi_res_observations = to_batch.(multi_res_observations)
-
+#     Nobs = length(observations.observations)
 #     parameters = parameters isa Vector ? parameters : [parameters]
 #     parameter_counts = size.(collapse_parameters.(parameters), 2)
     
@@ -72,29 +87,23 @@ include("./visualize_vertical.jl")
 #         push!(predictions, transpose_model_output(deepcopy(ip.time_series_collector), observations))
 #     end
 
-#     fig = Figure(resolution = (400*(length(field_names)+2), 400*(2*length(observations)+1)), font = "CMU Serif")
+#     fig = Figure(resolution = (400*(length(observations)), 400*(length(field_names)+1)), font = "CMU Serif")
 
-#     # obsn_colors = [colorant"#808080", colorant"#785EF0", colorant"#FE6100"]
+#     # obs_colors = [colorant"#808080", colorant"#785EF0", colorant"#FE6100"]
 #     # pred_band_colors = [colorant"#808080", colorant"#648FFF", colorant"#FFB000"]
-#     obsn_colors = [colorant"#808080", colorant"#FE6100"]
+#     obs_colors = [colorant"#808080", colorant"#FE6100"]
 #     pred_band_colors = [[colorant"#808080", colorant"#FFB000"], [colorant"#808080", colorant"#785EF0"]]
 #     pred_colors =  [[colorant"#808080", colorant"#785EF0"], [colorant"#808080", colorant"#648FFF"]]
 
-#     function empty_plot!(fig_position)
-#         ax = fig_position = Axis(fig_position)
-#         hidedecorations!(ax)
-#         hidespines!(ax, :t, :b, :l, :r)
-#     end
-
 #     for (oi, observation) in enumerate(observations.observations)
 
+#         i = oi
 #         other_observation = [o.observations[oi].field_time_serieses for o in multi_res_observations]
 
-#         i = oi + 1
 #         prediction = getindex.(predictions, oi)
 
 #         targets = observation.times
-#         snapshots = round.(Int, range(1, length(targets), length=2))
+#         time_indices = round.(Int, range(1, length(targets), length=2))
 
 #         Qᵇ = arch_array(CPU(), model.tracers.b.boundary_conditions.top.condition)[1,oi]
 #         Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
@@ -102,20 +111,20 @@ include("./visualize_vertical.jl")
 
 #         # text!(fig[i,1], latexstring(L"\mathbf{c}", "= $(oi)\nQᵇ = $(tostring(Qᵇ)) m⁻¹s⁻³\nQᵘ = $(tostring(Qᵘ)) m⁻¹s⁻²\nf = $(tostring(fv)) s⁻¹"), 
 
-#         empty_plot!(fig[i,1])
-#         text!(fig[i,1], latexstring(L"\mathbf{c}", " = $(oi)"), 
+#         ax_text = empty_plot!(fig[1,i])
+#         text!(ax_text, latexstring(L"\mathbf{c}", " = $(oi)"), 
 #                     position = (0, 0), 
-#                     align = (:center, :center), 
-#                     textsize = 32,
-#                     justification = :left)
+#                     align = (:center, :bottom), 
+#                     textsize = 50,
+#                     justification = :center)
 
 #         for (j, field_name) in enumerate(field_names)
 
-#             middle = j > 1 && j < n_fields
-#             remove_spines = j == 1 ? (:t, :r) : j == n_fields ? (:t, :l) : (:t, :l, :r)
-#             axis_args = j == n_fields ? (yaxisposition=:right, ) : NamedTuple()
+#             middle = i > 1 && i < Nobs
+#             remove_spines = i == 1 ? (:t, :r) : i == Nobs ? (:t, :l) : (:t, :l, :r)
+#             axis_args = i == Nobs ? (yaxisposition=:right, ) : NamedTuple()
 
-#             if j == 1 || j == n_fields
+#             if i == 1 || i == Nobs
 #                 axis_args = merge(axis_args, (ylabel="z (m)",))
 #             end
 
@@ -128,14 +137,14 @@ include("./visualize_vertical.jl")
 
 #             if field_name ∈ keys(first(prediction).field_time_serieses)
 
-#                 obsn = observed_interior(observation.field_time_serieses, field_name)
-#                 (scaling, xlabel) = scaling_xlabel(obsn, info)
+#                 obs_interior = observed_interior(observation.field_time_serieses, field_name)
+#                 (scaling, xlabel) = scaling_xlabel(obs_interior, info)
 
 #                 pred = [predicted_interior(p.field_time_serieses, field_name) for p in prediction]
 
-#                 other_obsn = vcat(observed_interior.(other_observation, field_name), [obsn])
+#                 other_obsn = vcat(observed_interior.(other_observation, field_name), [obs_interior])
 
-#                 ax = Axis(fig[i,j]; xlabelpadding=0, 
+#                 ax = Axis(fig[j, i]; xlabelpadding=0, 
 #                                     xtickalign=1, ytickalign=1, 
 #                                     xlabel, 
 #                                     titlesize = 32,
@@ -153,17 +162,17 @@ include("./visualize_vertical.jl")
 #                 middle && hideydecorations!(ax)
 
 #                 lins = []
-#                 for (color_index, t) in enumerate(snapshots)
+#                 for (color_index, t) in enumerate(time_indices)
 
 #                     o = obsn[:,t] .* scaling
 #                     std_y = std(hcat([o[:,t] .* scaling for o in other_obsn]...); dims=2)
 #                     xlower = o .- std_y
 #                     xupper = o .+ std_y
                     
-#                     oc = (obsn_colors[color_index], 0.8)
+#                     oc = (obs_colors[color_index], 0.8)
 #                     l = horizontal_band!(ax, xlower, xupper, z; color = oc, strokewidth=4, strokecolor=oc)
 #                     # l = horizontal_band!(ax, xlower, xupper, z)
-#                     # l = lines!([o...], z; color = (obsn_colors[color_index], 0.4), transparent=false)
+#                     # l = lines!([o...], z; color = (obs_colors[color_index], 0.4), transparent=false)
 #                     push!(lins, l)
 
 #                     nlines = 1
@@ -194,59 +203,51 @@ include("./visualize_vertical.jl")
 #                     end
 #                 end
 
-#                 times = @. round((targets[snapshots]) / 86400, sigdigits=2)
+#                 times = @. round((targets[time_indices]) / 86400, sigdigits=2)
 
 #                 # legendlabel(time) = vcat([observation_label * ", $time d"], [l * ", $time d" for l in parameter_labels])
-#                 # legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
+#                 legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
 
-#                 legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
+#                 # legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
 
-#                 Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=3, labelsize=40)
+#                 Legend(fig[2,1:2], lins, vcat([legendlabel(time) for time in times]...), nbanks=1, labelsize=40)
+#                 # Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=3, labelsize=40)
 #                 lins = []
 #             else
                 
-#                 empty_plot!(fig[i,j])
+#                 empty_plot!(fig[j, i])
 #             end
 #         end
 #     end
 
+#     rowsize!(fig.layout, 1, Fixed(200))
 #     save(joinpath(directory, filename), fig, px_per_unit = 2.0)
 #     return nothing
 # end
 
-function empty_plot!(fig_position)
-    ax = fig_position = Axis(fig_position)
-    hidedecorations!(ax)
-    hidespines!(ax, :t, :b, :l, :r)
-    return ax
-end
-
-"""
-    visualize!(ip::InverseProblem, parameters;
-                    field_names = [:u, :v, :b, :e],
-                    directory = pwd(),
-                    filename = "realizations.png"
-                    )
-
-    For visualizing 1-dimensional time series predictions.
-"""
 function visualize!(ip::InverseProblem, parameters;
                     parameter_labels = ["Model"],
                     observation_label = "Observation",
                     multi_res_observations = [ip.observations],
                     field_names = [:v, :u, :b, :e],
                     directory = pwd(),
-                    filename = "realizations.png"
+                    filename = "realizations.png",
+                    record = false,
                     )
 
     isdir(directory) || mkdir(directory)
 
-    model = ip.simulation.model
-
     observations = to_batch(ip.observations)
     multi_res_observations = to_batch.(multi_res_observations)
 
-    n_obs = length(observations.observations)
+    obs_band = length(multi_res_observations) > 1
+
+    Nobs = length(observations.observations)
+    Nfields = length(field_names)
+
+    fig = Figure(resolution = (400*(Nobs), 400*(Nfields+1)), font = "CMU Serif")
+
+    times = observations[1].times
 
     parameters = parameters isa Vector ? parameters : [parameters]
     parameter_counts = size.(collapse_parameters.(parameters), 2)
@@ -257,108 +258,152 @@ function visualize!(ip::InverseProblem, parameters;
         forward_run!(ip, θ)
 
         # Vector of SyntheticObservations objects, one for each observation
-        push!(predictions, transpose_model_output(deepcopy(ip.time_series_collector), observations))
+        prediction = transpose_model_output(deepcopy(ip.time_series_collector), observations)
+
+        # Vector of vectors of SyntheticObservations objects, one for each parameter
+        push!(predictions, prediction)
     end
 
-    fig = Figure(resolution = (400*(length(observations)), 400*(length(field_names)+1)), font = "CMU Serif")
+    ###
+    ### Configure grid of axes
+    ###
 
-    # obsn_colors = [colorant"#808080", colorant"#785EF0", colorant"#FE6100"]
-    # pred_band_colors = [colorant"#808080", colorant"#648FFF", colorant"#FFB000"]
-    obsn_colors = [colorant"#808080", colorant"#FE6100"]
-    pred_band_colors = [[colorant"#808080", colorant"#FFB000"], [colorant"#808080", colorant"#785EF0"]]
-    pred_colors =  [[colorant"#808080", colorant"#785EF0"], [colorant"#808080", colorant"#648FFF"]]
+    axes = [Axis(fig[i,j]) for i in 1:(Nfields+1), j in 1:Nobs]
+    for (j, observation) in enumerate(observations.observations)
 
-    for (oi, observation) in enumerate(observations.observations)
-
-        i = oi
-        other_observation = [o.observations[oi].field_time_serieses for o in multi_res_observations]
-
-        prediction = getindex.(predictions, oi)
-
-        targets = observation.times
-        snapshots = round.(Int, range(1, length(targets), length=2))
-
-        Qᵇ = arch_array(CPU(), model.tracers.b.boundary_conditions.top.condition)[1,oi]
-        Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
-        fv = arch_array(CPU(), model.coriolis)[1,oi].f
-
-        # text!(fig[i,1], latexstring(L"\mathbf{c}", "= $(oi)\nQᵇ = $(tostring(Qᵇ)) m⁻¹s⁻³\nQᵘ = $(tostring(Qᵘ)) m⁻¹s⁻²\nf = $(tostring(fv)) s⁻¹"), 
-
-        ax_text = empty_plot!(fig[1,i])
-        text!(ax_text, latexstring(L"\mathbf{c}", " = $(oi)"), 
+        ax_text = empty_plot!(fig[1,j])
+        text!(ax_text, latexstring(L"\mathbf{c}", " = $(j)"), 
                     position = (0, 0), 
                     align = (:center, :bottom), 
                     textsize = 50,
                     justification = :center)
 
-        for (j, field_name) in enumerate(field_names)
+        for (i, field_name) in enumerate(field_names)
 
-            middle = i > 1 && i < n_obs
-            remove_spines = i == 1 ? (:t, :r) : i == n_obs ? (:t, :l) : (:t, :l, :r)
-            axis_args = i == n_obs ? (yaxisposition=:right, ) : NamedTuple()
+            axis_args = j == Nobs ? (yaxisposition=:right, ) : NamedTuple()
 
-            if i == 1 || i == n_obs
+            if j == 1 || j == Nobs
                 axis_args = merge(axis_args, (ylabel="z (m)",))
             end
 
-            j += 1 # reserve the first column for row labels
+            i += 1
 
-            info = field_guide[field_name]
+            ax = Axis(fig[i, j]; xlabelpadding=0, 
+                        xtickalign=1, ytickalign=1, 
+                        titlesize = 32,
+                        xticklabelsize = 24,
+                        yticklabelsize = 24,
+                        xlabelsize = 32,
+                        ylabelsize = 32,
+                        # xticks=LinearTicks(3), 
+                        axis_args...)
 
-            grid = observation.grid
-            z = field_name ∈ [:u, :v] ? grid.zᵃᵃᶠ[1:grid.Nz] : grid.zᵃᵃᶜ[1:grid.Nz]
+            axes[i, j] = ax
+    
+        end
+    end
 
-            if field_name ∈ keys(first(prediction).field_time_serieses)
+    # for (j, observation) in enumerate(observations.observations)
 
-                obsn = observed_interior(observation.field_time_serieses, field_name)
-                (scaling, xlabel) = scaling_xlabel(obsn, info)
+    #     for (i, field_name) in enumerate(field_names)
 
-                pred = [predicted_interior(p.field_time_serieses, field_name) for p in prediction]
+    #         i += 1
 
-                other_obsn = vcat(observed_interior.(other_observation, field_name), [obsn])
+    #         axes[i, j] = ax
+    #     end
+    # end
 
-                ax = Axis(fig[j, i]; xlabelpadding=0, 
-                                    xtickalign=1, ytickalign=1, 
-                                    xlabel, 
-                                    titlesize = 32,
-                                    xticklabelsize = 24,
-                                    yticklabelsize = 24,
-                                    xlabelsize = 32,
-                                    ylabelsize = 32,
-                                    xticks=LinearTicks(3), 
-                                    axis_args...)
+    rowsize!(fig.layout, 1, Fixed(200))
 
-                hideydecorations!(ax, label = false, ticklabels = false, ticks = false,)
-                hidexdecorations!(ax, label = false, ticklabels = false, ticks = false,)
-                    
-                hidespines!(ax, remove_spines...)
-                middle && hideydecorations!(ax)
+    # Colors picked from a colorblind friendly palatte
+    # First color corresponds to the initial condition (time 0)
 
-                lins = []
-                for (color_index, t) in enumerate(snapshots)
+    # [grey, orange]
+    obs_colors = [colorant"#808080", colorant"#FE6100"]
 
-                    o = obsn[:,t] .* scaling
-                    std_y = std(hcat([o[:,t] .* scaling for o in other_obsn]...); dims=2)
-                    xlower = o .- std_y
-                    xupper = o .+ std_y
-                    
-                    oc = (obsn_colors[color_index], 0.8)
-                    l = horizontal_band!(ax, xlower, xupper, z; color = oc, strokewidth=4, strokecolor=oc)
-                    # l = horizontal_band!(ax, xlower, xupper, z)
-                    # l = lines!([o...], z; color = (obsn_colors[color_index], 0.4), transparent=false)
+    # [[grey, yellow], [grey, purple]] (if there are two prediction bands (e.g. prior and posterior), make the first yellow and the second purple))
+    pred_band_colors = [[colorant"#808080", colorant"#FFB000"], [colorant"#808080", colorant"#785EF0"]]
+
+    # [[grey, purple], [grey, blue]] (if there are two prediction lines (e.g. prior mean and final ensemble mean), make the first purple and the second blue)
+    pred_colors =  [[colorant"#808080", colorant"#785EF0"], [colorant"#808080", colorant"#648FFF"]]
+
+    # time indices to be plotted
+    time_indices = record ? collect(eachindex(times)) : round.(Int, range(1, length(times), length=2))
+    display_times = @. round((times[time_indices]) / 86400, sigdigits=2)
+
+
+    time_index = Observable(1)
+
+    # legendlabel(time) = vcat([observation_label * ", $time d"], [l * ", $time d" for l in parameter_labels])
+    legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
+    # legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
+
+    on(time_index) do t
+
+        lins = []
+        labels = []
+
+        for (j, observation) in enumerate(observations.observations)
+
+            other_observation = [o.observations[j].field_time_serieses for o in multi_res_observations]
+            prediction = getindex.(predictions, j)
+
+            # Qᵇ = arch_array(CPU(), ip.simulation.model.tracers.b.boundary_conditions.top.condition)[1,i]
+            # Qᵘ = arch_array(CPU(), ip.simulation.model.velocities.u.boundary_conditions.top.condition)[1,i]
+            # fv = arch_array(CPU(), ip.simulation.model.coriolis)[1,i].f
+
+            for (i, field_name) in enumerate(field_names)
+
+                i += 1 # reserve the first column for row labels
+
+                ax = axes[i, j]
+
+                info = field_guide[field_name]
+
+                grid = observation.grid
+                z = field_name ∈ [:u, :v] ? grid.zᵃᵃᶠ[1:grid.Nz] : grid.zᵃᵃᶜ[1:grid.Nz]
+
+                if field_name ∈ keys(first(prediction).field_time_serieses)
+
+                    obs_interior = observed_interior(observation.field_time_serieses, field_name)
+                    (scaling, xlabel) = scaling_xlabel(obs_interior, info)
+
+                    ax.xlabel = xlabel
+
+                    pred = [predicted_interior(p.field_time_serieses, field_name) for p in prediction]
+
+                    # If it's an animation, fix the color; 
+                    # if it's a figure, pick the color based on the time
+                    color_index = record ? 2 : findfirst(isequal(t), time_indices)
+
+                    y = obs_interior[:, t] .* scaling
+
+                    obs_color = (obs_colors[color_index], 0.8)
+                    obs_args = (color = obs_color, strokecolor = obs_color)
+
+                    if obs_band
+                        Y = hcat([data[:, t] .* scaling for data in observed_interior.(other_observation, field_name)]...)
+                        std_y = std(Y; dims = 2)
+                        
+                        l = horizontal_band!(ax, y .- std_y, y .+ std_y, z; strokewidth = 4, obs_args...)
+                    else 
+                        l = lines!(ax, y, z; strokewidth = 10, obs_args...)
+                    end
+
                     push!(lins, l)
+                    push!(labels, observation_label * "($time d)")
 
                     nlines = 1
                     nbands = 1
                     for (n, p) in zip(parameter_counts, pred)
 
                         if n == 1 # Plot prediction line 
-                            l = lines!([p[1, oi, :,t] .* scaling...], z; color = (pred_colors[nlines][color_index], 1.0), linestyle=:dash, linewidth=4)
+                            l = lines!(ax, [p[1, j, :,t] .* scaling...], z; color = (pred_colors[nlines][color_index], 1.0), linestyle=:dash, linewidth=4)
                             push!(lins, l)
                             nlines += 1
 
                         else # Plot uncertainty band
-                            ed = transpose(p[:, oi, :, t]) .* scaling # Nz x Nensemble
+                            ed = transpose(p[:, j, :, t]) .* scaling # Nz x Nensemble
 
                             # Filter out failed particles, if any
                             nan_values = vec(mapslices(any, isnan.(ed); dims=1)) # bitvector
@@ -374,30 +419,57 @@ function visualize!(ip::InverseProblem, parameters;
                             nbands += 1
                         end
                     end
+                    labels = vcat(labels, [l * "($time d)" for l in parameter_labels])
+
+                    middle = j > 1 && j < Nobs
+                    middle && hideydecorations!(ax)
+                    remove_spines = j == 1 ? (:t, :r) : j == Nobs ? (:t, :l) : (:t, :l, :r)
+                    hidespines!(ax, remove_spines...)
+        
+                    hideydecorations!(ax, label = false, ticklabels = false, ticks = false,)
+                    hidexdecorations!(ax, label = false, ticklabels = false, ticks = false,)
+                else
+                    
+                    empty_plot!(fig[i, j])
                 end
 
-                times = @. round((targets[snapshots]) / 86400, sigdigits=2)
-
-                # legendlabel(time) = vcat([observation_label * ", $time d"], [l * ", $time d" for l in parameter_labels])
-                # legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
-
-                legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
-
-                Legend(fig[2,1:2], lins, vcat([legendlabel(time) for time in times]...), nbanks=1, labelsize=40)
-                # Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=3, labelsize=40)
-                lins = []
-            else
-                
-                empty_plot!(fig[j, i])
             end
         end
+
+        legend_lins[] = lins
+        legend_labels[] = labels
     end
 
-    rowsize!(fig.layout, 1, Fixed(200))
-    save(joinpath(directory, filename), fig, px_per_unit = 2.0)
+    legend_lins = Observable([])
+    legend_labels = Observable(String[])
+
+    Legend(fig[1,1:2], legend_lins[], legend_labels[])
+
+    # Legend(fig[1,1:2], legend_lins[], legend_labels[], nbanks=1, labelsize=40)    
+
+    if record
+        Makie.record(fig, joinpath(directory, "time_animation.mp4"), time_indices;
+                    framerate = 10) do t
+            
+            time_index[] = t
+            # Legend(fig[1,1:2], lins, legendlabel(times[t]), nbanks=1, labelsize=40)    
+        end
+    else 
+        for t in time_indices
+            time_index[] = t
+        end
+
+        @show legend_lins[], legend_labels[]
+        # Legend(fig[1,1:2], lins, labels, nbanks=1, labelsize=40)
+
+        # Legend(fig[1,1:2], lins, vcat([legendlabel(time) for time in times]...), nbanks=1, labelsize=40, merge=true)
+        # Legend(fig[1,2:3], lins, vcat([legendlabel(time) for time in times]...), nbanks=3, labelsize=40)
+
+        save(joinpath(directory, filename), fig, px_per_unit = 2.0)
+    end
+
     return nothing
 end
-
 
 # # visualize!(ip::InverseProblem, parameters; kwargs...) = visualize!(model_time_series(ip, parameters); kwargs...)
 

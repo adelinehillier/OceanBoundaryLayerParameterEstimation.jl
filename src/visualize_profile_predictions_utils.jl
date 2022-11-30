@@ -1,3 +1,5 @@
+using CUDA: @allowscalar
+
 function open_output_file(directory)
         isdir(directory) || mkpath(directory)
         file = joinpath(directory, "output.txt")
@@ -60,15 +62,19 @@ Cˢ_(field_name, θ::NamedTuple) = Dict(:b => θ.Cˢc, :u => θ.Cˢu, :v => θ.C
 # Cᵟ_(field_name, θ::NamedTuple) = Dict(:b => θ.Cᵟc, :u => θ.Cᵟu, :v => θ.Cᵇu, :e => θ.Cᵟe)[field_name]
 Cᵟ_(field_name, θ) = 0.5
 
-# parameters should be Vector{<:NamedTuple}
+# parameters should be Vector{<:NamedTuple}> If nothing, the parameters are 1 (so we can analyze observations)
 function length_scales(inverse_problem, field_time_serieses, time_index; parameters=nothing)
     
-    tr = NamedTuple{(:e, :b)}((field_time_serieses.e.data[:,:,:,time_index], field_time_serieses.b.data[:,:,:,time_index]))
+    e = arch_array(CPU(), field_time_serieses.e.data)
+    b = arch_array(CPU(), field_time_serieses.b.data)
+
+    tr = NamedTuple{(:e, :b)}((e[:,:,:,time_index], b[:,:,:,time_index]))
     vs = Dict()
     for field_name in (:u, :v, :w)
 
         if field_name ∈ keys(field_time_serieses)
-            vs[field_name] = getproperty(field_time_serieses, field_name).data[:,:,:,time_index]
+            field_data = arch_array(CPU(), getproperty(field_time_serieses, field_name).data)
+            vs[field_name] = field_data[:,:,:,time_index]
         else 
             # Check the most recent variable state to make sure it's trivial
             data = getproperty(inverse_problem.simulation.model.velocities, field_name).data
@@ -94,10 +100,10 @@ function length_scales(inverse_problem, field_time_serieses, time_index; paramet
         params = isnothing(parameters) ? [nothing for _ in 1:Nx] : parameters
 
         field_data[:d] = [wall_vertical_distanceᶜᶜᶠ(i, j, k, grid) for i=1:Nx, j=1:Ny, k=1:Nz]
-        field_data[:ℓᴺ] = [Cᵇ_(field_name, params[i]) * buoyancy_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
-        field_data[:ℓˢ] = [Cˢ_(field_name, params[i]) * shear_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
-        field_data[:ℓᵟ] = [Cᵟ_(field_name, params[i]) * Δzᶜᶜᶠ(i, j, k, grid) for i=1:Nx, j=1:Ny, k=1:Nz]
-        field_data[:Ri] = [Riᶜᶜᶠ(i, j, k, grid, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
+        field_data[:ℓᵇ] = [Cᵇ_(field_name, params[i]) * buoyancy_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
+        @allowscalar field_data[:ℓˢ] = [Cˢ_(field_name, params[i]) * shear_mixing_lengthᶜᶜᶠ(i, j, k, grid, tr.e, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
+        @allowscalar field_data[:ℓᵟ] = [Cᵟ_(field_name, params[i]) * Δzᶜᶜᶠ(i, j, k, grid) for i=1:Nx, j=1:Ny, k=1:Nz]
+        @allowscalar field_data[:Ri] = [Riᶜᶜᶠ(i, j, k, grid, vs, tr, buoyancy) for i=1:Nx, j=1:Ny, k=1:Nz]
 
         ans[field_name] = NamedTuple(field_data)
     end

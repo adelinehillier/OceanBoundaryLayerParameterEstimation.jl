@@ -1,29 +1,5 @@
 using LaTeXStrings
 
-function plot_superimposed_forward_map_output(eki; directory=pwd())
-    θ̅₀ = eki.iteration_summaries[0].ensemble_mean
-    θ̅ = eki.iteration_summaries[end].ensemble_mean
-    Gb = forward_map(eki.inverse_problem, [θ̅₀, θ̅₁₀])[:,1:2]
-    G₀ = Gb[:,1]
-    Gₙ = Gb[:,2]
-    truth = eki.mapped_observations
-    x_axis = [1:length(truth) ...]
-
-    f = CairoMakie.Figure(resolution=(2500,1000), fontsize=48)
-    ax = Axis(f[1,1])
-    lines!(ax, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
-    lines!(ax, x_axis, G₀; label = "G(θ̅₀)", linewidth=4, color=:black)
-    axislegend(ax)
-    hidexdecorations!(ax)
-
-    ax2 = Axis(f[2,1])
-    lines!(ax2, x_axis, truth; label = "Observation", linewidth=12, color=(:red, 0.4))
-    lines!(ax2, x_axis, Gₙ; label = "G(θ̅ₙ)", linewidth=4, color=:black)
-    axislegend(ax2)
-
-    save(joinpath(directory, "superimposed_forward_map_output.png"), f)
-end
-
 function analyze_loss_components(Φ_full, Φ_full_emulated; directory=pwd())
     fig = CairoMakie.Figure()
     
@@ -64,8 +40,11 @@ end
 function plot_marginal_distributions(parameter_names, unscaled_chain_X, unscaled_chain_X_emulated; directory=pwd(), show_means=true, n_columns=3)
 
     Nparam = length(parameter_names)
-    std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
-    std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    # std1 = [std(getindex.(unscaled_chain_X, i)) for i in 1:Nparam]
+    # std2 = [std(getindex.(unscaled_chain_X_emulated, i)) for i in 1:Nparam]
+    std1 = std(unscaled_chain_X, dims=2)
+    std2 = std(unscaled_chain_X_emulated, dims=2)
+    
     bandwidths = [mean([std1[i], std2[i]])/15 for i = 1:Nparam]
 
     hist_fig, hist_axes = plot_mcmc_densities(unscaled_chain_X_emulated, parameter_names; 

@@ -1,3 +1,7 @@
+using CUDA: @allowscalar
+using ParameterEstimocean.InverseProblems: AbstractInverseProblem
+using ParameterEstimocean.Parameters: build_parameters_named_tuple
+
 """
     visualize_vertical!(ip::InverseProblem, parameters;
                     field_names = [:u, :v, :b, :e],
@@ -49,7 +53,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
     pred_band_colors = [[colorant"#808080", colorant"#FFB000"], [colorant"#808080", colorant"#785EF0"]]
     pred_colors =  [[colorant"#808080", colorant"#785EF0"], [colorant"#808080", colorant"#648FFF"]]
     field_colors = ["#E69F00", "#56B4E9", :black, "#009E73"] # for {c, u, e}
-    internals_colors = Dict(:ℓᴺ => "#648FFF", 
+    internals_colors = Dict(:ℓᵇ => "#648FFF", 
                             :ℓˢ => "#785EF0", 
                             :ℓᵟ => "#DC267F", 
                             :d => "#FE6100")
@@ -73,7 +77,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
         Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
         fv = arch_array(CPU(), model.coriolis)[1,oi].f
 
-        obsn_ri = length_scales(ip, observation.field_time_serieses, snapshots[end])
+        # obsn_ri = length_scales(ip, observation.field_time_serieses, snapshots[end])
 
         ax_σᵩ_1 = nothing
         ax_σᵩ_2 = nothing
@@ -188,15 +192,27 @@ function visualize_vertical!(ip::InverseProblem, parameters;
                     for (p_index, θ, n, p, plabel, ax_freq, ax_σᵩ) in zip(1:2, parameters, parameter_counts, prediction, parameter_labels, [ax_freq_1, ax_freq_2], [ax_σᵩ_1, ax_σᵩ_2])
 
                         θ_vector_named_tuple = n == 1 ? [θ] : θ
-                        ls = length_scales(ip, p.field_time_serieses, last(snapshots); parameters=θ_vector_named_tuple)[field_name]
-                        dominant_length_scale = max.(ls.ℓᵟ, min.(ls.d, ls.ℓˢ, ls.ℓᴺ))
+
+                        all_θ = [build_parameters_named_tuple(ip.free_parameters, θ; with_dependent_parameters=true) for θ in θ_vector_named_tuple]
+
+                        # dep_params(θ) = NamedTuple(name => value(θ) for (name, value) in pairs(ip.free_parameters.dependent_parameters))
+
+                        # all_θ = [merge(θ, dep_params(θ)) for θ in θ_vector_named_tuple]
+
+                        ls = length_scales(ip, p.field_time_serieses, last(snapshots); parameters = all_θ)[field_name]
+
+                        # Ri = arch_array(CPU(), ls.Ri)
+                        # σᵩ = [stable_mixing_scale(Ri[i, j, k], all_θ[i], field_name) for (i,j,k) in zip(axes(Ri)...)]
+                        # dominant_length_scale = max.(ls.ℓᵟ, σᵩ .* min.(ls.d, ls.ℓˢ, ls.ℓᵇ))
+                        dominant_length_scale = max.(ls.ℓᵟ, min.(ls.d, ls.ℓˢ, ls.ℓᵇ))
+
                         xlims!(ax_internals, 0, maximum(dominant_length_scale))
                         
                         # ~~~~~~~ Length scale profile plot
-                        relevant_scales = iszero(Qᵘ) ? [:ℓᴺ, :ℓᵟ, :d] : [:ℓᴺ, :ℓˢ, :ℓᵟ, :d]
+                        relevant_scales = iszero(Qᵘ) ? [:ℓᵇ, :ℓᵟ, :d] : [:ℓᵇ, :ℓˢ, :ℓᵟ, :d]
                         if internals_to_plot == p_index
                             for (iq, q_name) in enumerate(relevant_scales) # each Nensemble x Nobservations x Nz
-                                q = getproperty(ls, q_name)  # Nensemble x 1 x Nz
+                                q = getproperty(ls, q_name)  # size Nensemble x 1 x Nz
 
                                 if n == 1 # Plot internals line
                                     qv = q[1, 1, :]
@@ -221,7 +237,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
                             line_transparency = n == 1 ? 1.0 : 0.2
 
                             l = nothing
-                            for particle in θ
+                            for particle in all_θ
                                 # Sample the stability function for this Ri
                                 
                                 σᵩs = [stable_mixing_scale(Ri, particle, field_name) for Ri in Ris]
@@ -243,7 +259,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
 
                         # ~~~~~~~ Dominant length scale pie chart
                         frequency_dominance = [sum(getproperty(ls, q_name) .== dominant_length_scale) for q_name in relevant_scales]
-                        pie!(ax_freq, frequency_dominance; color = [(internals_colors[q_name], 0.3) for q_name in relevant_scales], strokecolor = :white, label=["ℓᴺ", "ℓˢ", "ℓᵟ", "d"])
+                        pie!(ax_freq, frequency_dominance; color = [(internals_colors[q_name], 0.3) for q_name in relevant_scales], strokecolor = :white, label=["ℓᵇ", "ℓˢ", "ℓᵟ", "d"])
                     end
                 end
 

@@ -22,7 +22,8 @@ function plot_mcmc_densities!(fig, axes, chain_X, parameter_names;
 
     sample_means = []
     for (i, param_name) in enumerate(parameter_names)
-        samples = getindex.(chain_X, i)
+        # samples = getindex.(chain_X, i)
+        chain_X[i, :]
 
         σ = std(samples)
         μ = mean(samples)
@@ -54,7 +55,8 @@ end
 function plot_mcmc_densities(chain_X, parameter_names; 
                                 n_columns = 3, kwargs...)
     
-    N_axes = length(first(chain_X)) + 1
+    N_axes = size(chain_X, 1) + 1
+    # N_axes = length(first(chain_X)) + 1
     n_rows = Int(ceil(N_axes / n_columns))
                             
     fig = Figure(resolution = (500n_columns, 200n_rows))
