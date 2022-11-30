@@ -238,14 +238,14 @@ inverse(Π::ContinuousUnivariateDistribution, x) = transform_to_unconstrained(Π
 transform(Π::ContinuousUnivariateDistribution, x) = transform_to_constrained(Π, x)
 
 function normalize_transform(θ, nt::NormalizationTransformation)
-    θ = θ[:,:]
+    θ = θ[:,:] # make a copy for mutation
     θ = mapslices(x -> inverse.(nt.transformation, x), θ, dims=1)
     normalize!(θ, nt.normalization)
     return θ
 end
 
 function inverse_normalize_transform(θ, nt::NormalizationTransformation)
-    θ = θ[:,:]
+    θ = θ[:,:] # make a copy for mutation
     denormalize!(θ, nt.normalization)
     θ = mapslices(x -> transform.(nt.transformation, x), θ, dims=1)
     return θ
