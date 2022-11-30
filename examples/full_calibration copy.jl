@@ -24,8 +24,7 @@ field_names = (:v, :u, :b, :e)
 
 include("./full_calibration_setup.jl")
 
-main_directory = "results/calibrate_emulate_sample_2/"
-isdir(main_directory) || mkdir(main_directory)
+main_directory = "calibrate_emulate_sample/"
 
 #####
 ##### Set up ensemble model
@@ -68,27 +67,11 @@ function get_observations(data_path, times;
 
     if !isnothing(data_paths_for_noise_cov_estimate)
         obsns_various_resolutions = [get_observations(dp, weights, regrid; transformation, times, field_names, forward_map_names) for dp in data_paths_for_noise_cov_estimate]
-        noise_covariance = estimate_noise_covariance(obsns_various_resolutions, times; output_map)
+        noise_covariance = estimate_noise_covariance(obsns_various_resolutions, times; output_map) .* 2
 
-        Y = hcat([observation_map(output_map, obs) for obs in obsns_various_resolutions]...)
-
-        lb = 0.0
-        ub = maximum(noise_covariance)
-    
-        fig = Figure(resolution = (4800, 2400), fontsize=80)
-        ax1 = Axis(fig[1, 1]; title="Y")
-        ax2 = Axis(fig[1, 2]; title="Γy = (Y-y̅) * (Y-y̅)ᵀ / 2")
-        ax3 = Axis(fig[1, 3]; title="diagm(diag(Γy))")
-        lines!(ax1, Y[:, 1], collect(1:size(Y, 1)), color=:black)
-        lines!(ax1, Y[:, 2], collect(1:size(Y, 1)), color=:green)
-        lines!(ax1, Y[:, 3], collect(1:size(Y, 1)), color=:orange)
-        hmap2 = heatmap!(ax2, noise_covariance, colormap = Reverse(:grays), colorrange=(lb, ub))
-        hmap3 = heatmap!(ax3, diagm(diag(noise_covariance)), colormap = Reverse(:grays), colorrange=(lb, ub))
-        save(joinpath(directory, "heatmaps.png"), fig)
-    
         # Remove off-diagonal elements
         noise_covariance = diagm(diag(noise_covariance))
-        noise_covariance = noise_covariance .* 2 + I(size(noise_covariance, 1))
+        Y = hcat([observation_map(output_map, obs) for obs in obsns_various_resolutions]...)
         return observations, obsns_various_resolutions, noise_covariance, Y
     end
     
@@ -320,8 +303,7 @@ begin
     multi_res_observations = obsns_various_resolutions_med_res_by_case[case]
 
     directory = joinpath(case_directory, "calibrate_round_1")
-    isdir(directory) || mkdir(directory)
-    N_ensemble = 200
+    N_ensemble = 100
     iterations = 10
 
     # Subset of parameters we wish to tune
@@ -332,16 +314,7 @@ begin
                                     :CᴷRiᶜ, :CᴷRiʷ])
 
     # build_prior(name) = lognormal(; mean=0.5, std=0.5)
-    # build_prior(name) = ScaledLogitNormal(bounds = (0.0, 1.0))
-    build_prior(name) = ScaledLogitNormal{Float64}(0.0, 1.2, 0.0, 1.0)
-
-    # Plot prior parameters
-    fig = Figure()
-    ax = Axis(fig[1,1])
-    density!(ax, rand(build_prior(1), 1e8))
-    xlims!(ax, (0, 1))
-    save(joinpath(directory, "prior.png"), fig)
-
+    build_prior(name) = ScaledLogitNormal(bounds = (0.0, 1.0))
     # build_prior(name) = ScaledLogitNormal(bounds = bounds(name, ParameterSet{CATKEVerticalDiffusivity}()))
 
     priors_round_1 = named_tuple_map(parameter_names_round_1, build_prior)
@@ -381,7 +354,7 @@ global priors = named_tuple_map(all_parameter_names, build_prior)
 # unscaled_chain_X = load(sampling_results)["unscaled_chain_X_true"]
 # unscaled_chain_X_emulated = load(sampling_results)["unscaled_chain_X_emulated"]
 
-N_ensemble = 200
+N_ensemble = 100
 iterations = 8
 
 use_ces_for_svd = false

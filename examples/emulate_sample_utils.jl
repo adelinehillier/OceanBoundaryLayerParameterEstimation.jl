@@ -61,7 +61,7 @@ function truncate_forward_map_to_length_k_uncorrelated_points(G, y, Γy, k)
     project_decorrelated(y) = D * (y .- m)
     inverse_project_decorrelated(ŷ) = (Vᵀ' * Σ * ŷ) .+ m
     inverse_project_decorrelated_covariance(Γ̂) = Vᵀ' * Σ * Γ̂ * Σ * Vᵀ
-
+    
     ŷ = project_decorrelated(y)
 
     # Transform the observation covariance matrix
