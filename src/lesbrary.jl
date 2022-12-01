@@ -1,3 +1,5 @@
+# This script is defunct when using SingleColumnModelCalibration
+
 using DataDeps
 using Statistics
 using Oceananigans

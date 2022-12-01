@@ -1,5 +1,4 @@
 using CUDA: @allowscalar
-using ParameterEstimocean.InverseProblems: AbstractInverseProblem
 using ParameterEstimocean.Parameters: build_parameters_named_tuple
 
 """
@@ -46,7 +45,7 @@ function visualize_vertical!(ip::InverseProblem, parameters;
 
     nrows = plot_internals ? 2n_obsn+1 : n_obsn+1 # first row for legend
     ncols = plot_internals ? n_fields+3 : # 1 column for osbn label; 2 columns for Ri plot
-                             n_fields+1 # 1 column for osbn label
+                             n_fields # 1 column for osbn label
     fig = Figure(resolution = 400 .* (ncols, nrows), font = "CMU Sans Serif")
 
     obsn_colors = [colorant"#808080", colorant"#FE6100"]

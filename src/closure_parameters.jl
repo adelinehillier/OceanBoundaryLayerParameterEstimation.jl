@@ -1,3 +1,5 @@
+# This script is defunct when using SingleColumnModelCalibration
+
 using LaTeXStrings
 using Oceananigans.TurbulenceClosures: CATKEVerticalDiffusivity, RiBasedVerticalDiffusivity
 

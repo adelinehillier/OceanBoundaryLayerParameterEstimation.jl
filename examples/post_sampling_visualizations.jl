@@ -3,8 +3,6 @@ using ParameterEstimocean.EnsembleKalmanInversions: eki_objective
 ###
 ### Compute optimal parameters
 ###
-# optimal_parameters_emulated = unscaled_chain_X_emulated[argmin(chain_nll_emulated)]
-# optimal_parameters_true = unscaled_chain_X[argmin(chain_nll)]
 optimal_parameters_emulated = unscaled_chain_X_emulated[:, argmin(chain_nll_emulated)]
 optimal_parameters_true = unscaled_chain_X[:, argmin(chain_nll)]
 
@@ -16,14 +14,8 @@ optimal_parameters_eki = collect(eki.iteration_summaries[end].ensemble_mean)
 
 ni = nj = 40
 
-# pname1 = :Cᴷu⁻
-# pname2 = :Cᴷuʳ
-
 pname1 = :Cᴷc⁻
 pname2 = :Cᴷcʳ
-
-# pname1 = :convective_κz
-# pname2 = :background_κz
 
 function padded_parameter_range(pname; length=50)
     ensemble = vcat([getproperty.(summary.parameters, pname) for summary in eki.iteration_summaries]...)
@@ -38,9 +30,6 @@ parameter_index(eki, pname) = findall( x -> x == pname, [eki.inverse_problem.fre
 
 p1 = padded_parameter_range(pname1; length = ni)
 p2 = padded_parameter_range(pname2; length = nj)
-
-# p1 = range(0.001; stop=4, length=ni)
-# p2 = range(0.001; stop=4, length=nj)
 
 pindex1 = parameter_index(eki, pname1)
 pindex2 = parameter_index(eki, pname2)
@@ -61,7 +50,6 @@ inv_sqrt_Γy = inv(sqrt(eki.noise_covariance))
 G = forward_map_unlimited(training, all_params)
 # Φ_eki = [eki_objective(eki, running_params[j], G[:,j]; constrained = true) for j in 1:size(G, 2)]
 
-
 zc_eki = [(1/2) * norm(inv_sqrt_Γy * (y .- G[:,j]))^2 for j in axes(G)[2]]
 zc_true = nll(model_sampling_problem, all_params; normalized = false)
 
@@ -70,15 +58,6 @@ zc_emulated = nll(emulator_sampling_problem, all_params; normalized = false)
 zc_emulated = Float64.(zc_emulated)
 zc_true = Float64.(zc_true)
 zc_eki = Float64.(zc_eki)
-
-# julia> using LogDensityProblems, TransformVariables
-# julia> ℓ = TransformedLogDensity(as((μ = asℝ, σ = asℝ₊)), problem)
-# julia> LogDensityProblems.dimension(ℓ)
-# julia> LogDensityProblems.logdensity(ℓ, zeros(2))
-
-# using FileIO
-
-# file = "./loss_landscape_$(forward_map_description).jld2"
 
 begin
     fig = CairoMakie.Figure(resolution=(3400,2000), font = "CMU Sans Serif", fontsize=48)
@@ -93,10 +72,6 @@ begin
     plot_loss_contour!(ga1, eki, xc, yc, zc_eki, pname1, pname2; plot_minimizer=true, title="EKI Objective Function")
     plot_eki_particles!(ga, eki, pname1, pname2; title="EKI Particle Traversal", last_iteration=n-1)
 
-    # chain1_emulated = getindex.(unscaled_chain_X_emulated, pindex1)
-    # chain2_emulated = getindex.(unscaled_chain_X_emulated, pindex2)
-    # chain1 = getindex.(unscaled_chain_X, pindex1)
-    # chain2 = getindex.(unscaled_chain_X, pindex2)
     chain1_emulated = unscaled_chain_X_emulated[pindex1,:]
     chain2_emulated = unscaled_chain_X_emulated[pindex2,:]
     chain1 = unscaled_chain_X[pindex1,:]
@@ -104,8 +79,6 @@ begin
 
     unscaled_seed_X = inverse_normalize_transform(hcat(seed_X...), normalization_transformation)
 
-    # chain1seed = getindex.(unscaled_seed_X, pindex1)
-    # chain2seed = getindex.(unscaled_seed_X, pindex2)
     chain1seed = unscaled_seed_X[pindex1,:]
     chain2seed = unscaled_seed_X[pindex2,:]
 
