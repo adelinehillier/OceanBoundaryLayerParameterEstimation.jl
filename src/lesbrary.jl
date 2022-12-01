@@ -4,7 +4,9 @@ using DataDeps
 using Statistics
 using Oceananigans
 using Oceananigans.Units
+using ParameterEstimocean
 using ParameterEstimocean.Transformations: Transformation
+import ParameterEstimocean.Observations: BatchedSyntheticObservations
 
 fields_by_case = Dict(
    "weak_wind_strong_cooling" => (:b, :u, :v, :e),
