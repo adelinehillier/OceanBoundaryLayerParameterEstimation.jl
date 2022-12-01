@@ -447,7 +447,6 @@ function visualize!(ip::InverseProblem, parameters;
     legend_labels = Observable(String[])
 
     Legend(fig[1,1:2], legend_lins[], legend_labels[])
-
     # Legend(fig[1,1:2], legend_lins[], legend_labels[], nbanks=1, labelsize=40)    
 
     if record
@@ -473,53 +472,3 @@ function visualize!(ip::InverseProblem, parameters;
 
     return nothing
 end
-
-# # visualize!(ip::InverseProblem, parameters; kwargs...) = visualize!(model_time_series(ip, parameters); kwargs...)
-
-# # function visualize_and_save!(calibration, validation, parameters, directory; fields=[:u, :v, :b, :e])
-# #         isdir(directory) || makedir(directory)
-
-# #         path = joinpath(directory, "results.txt")
-# #         o = open_output_file(path)
-# #         write(o, "Training relative weights: $(calibration.relative_weights) \n")
-# #         write(o, "Validation relative weights: $(validation.relative_weights) \n")
-# #         write(o, "Training default parameters: $(validation.default_parameters) \n")
-# #         write(o, "Validation default parameters: $(validation.default_parameters) \n")
-
-# #         write(o, "------------ \n \n")
-# #         default_parameters = calibration.default_parameters
-# #         train_loss_default = calibration(default_parameters)
-# #         valid_loss_default = validation(default_parameters)
-# #         write(o, "Default parameters: $(default_parameters) \nLoss on training: $(train_loss_default) \nLoss on validation: $(valid_loss_default) \n------------ \n \n")
-
-# #         train_loss = calibration(parameters)
-# #         valid_loss = validation(parameters)
-# #         write(o, "Parameters: $(parameters) \nLoss on training: $(train_loss) \nLoss on validation: $(valid_loss) \n------------ \n \n")
-
-# #         write(o, "Training loss reduction: $(train_loss/train_loss_default) \n")
-# #         write(o, "Validation loss reduction: $(valid_loss/valid_loss_default) \n")
-# #         close(o)
-
-# #         parameters = calibration.parameters.ParametersToOptimize(parameters)
-
-# #         for inverse_problem in [calibration, validation]
-
-# #             all_data = inverse_problem.observations
-# #             simulation = inverse_problem.simulation
-# #             set!(simulation.model, parameters)
-
-# #             for data_length in Set(length.(getproperty.(all_data, :t)))
-
-# #                 observations = [d for d in all_data if length(d.t) == data_length]
-# #                 days = observations[1].t[end]/86400
-
-# #                 new_ip = InverseProblem()
-
-# #                 visualize!(simulation, observations, parameters;
-# #                             fields = fields,
-# #                             filename = joinpath(directory, "$(days)_day_simulations.png"))
-# #             end
-# #         end
-    
-# #     return nothing
-# # end
