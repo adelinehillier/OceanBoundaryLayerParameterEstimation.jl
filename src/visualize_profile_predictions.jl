@@ -10,6 +10,9 @@ include("visualize_profile_predictions_utils.jl")
 superscript_guide = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
 int_to_superscript(x) = string([getindex(superscript_guide, parse(Int64, c)+1) for c in string(x)]...)
 
+subscript_guide = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
+int_to_subscript(x) = string([getindex(subscript_guide, parse(Int64, c)+1) for c in string(x)]...)
+
 function observed_interior(field_time_serieses, field_name)
     obs = getproperty(field_time_serieses, field_name)
     return view(arch_array(CPU(), obs.data), 1,1,1:obs.grid.Nz,:)

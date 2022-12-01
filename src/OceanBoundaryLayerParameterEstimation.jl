@@ -46,7 +46,8 @@ export
     # visualize_profile_predictions.jl
     visualize!,
     visualize_vertical!,
-    open_output_file
+    open_output_file,
+    int_to_subscript
 
 include("lesbrary.jl")
 include("closure_parameters.jl")
