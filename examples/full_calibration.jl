@@ -36,6 +36,7 @@ using SingleColumnModelCalibration:
     parameter_guide, 
     get_free_parameters,
     parameter_sets,
+    default_cases,
     rectilinear_grids_from_parameters,
     batched_lesbrary_observations
 
@@ -114,7 +115,7 @@ end
 # For case by case calibration, generate an inverse problem with all cases for plotting
 eki_all_sims = build_eki(default_cases; grid_parameters = grid_parameters[1:1], suite_parameters = suite_parameters[1:1])
 training_all_sims = eki_all_sims.inverse_problem
-training_med_res_obs_various_resolutions = get_multires_observations(cases)
+training_med_res_obs_various_resolutions = get_multires_observations(default_cases)
 
 # Visualize performance of prior mean parameters
 free_parameters = get_free_parameters(name; f=prior_function)
