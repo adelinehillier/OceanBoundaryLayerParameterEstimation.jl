@@ -25,7 +25,7 @@ field_names = (:v, :u, :b, :e)
 include("./full_calibration_setup.jl")
 
 main_directory = "results/calibrate_emulate_sample_2/"
-isdir(main_directory) || mkdir(main_directory)
+isdir(main_directory) || mkpath(main_directory)
 
 #####
 ##### Set up ensemble model
