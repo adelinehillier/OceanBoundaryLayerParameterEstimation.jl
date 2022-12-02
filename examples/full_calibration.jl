@@ -44,15 +44,19 @@ by_case = true
 
 Random.seed!(1234)
 
+data_dir = "/Users/andresouza/Desktop/Repositories/SingleColumnModelCalibration.jl/data"
+data_dir = "../data"
+
 closure = CATKEVerticalDiffusivity()
 name = "constant_Pr"
 names = parameter_sets[name]
+# dependent_parameters = dependent_parameter_sets[name]
 
-Δt = 1minutes
+Δt = 5minutes
 N_ensemble = 100
 architecture = CPU()
-Ntimes = 4
-tke_weight = 0.0
+Ntimes = 2
+tke_weight = 0.05
 start_time = 2hours
 
 resampler = Resampler(acceptable_failure_fraction=0.4, 
@@ -60,8 +64,8 @@ resampler = Resampler(acceptable_failure_fraction=0.4,
                       only_failed_particles=true, 
                       distribution = FullEnsembleDistribution())
 
-pseudo_stepping = Iglesias2021()
-# pseudo_stepping = ConstantConvergence(convergence_ratio = 0.9^length(names))
+# pseudo_stepping = Iglesias2021()
+pseudo_stepping = ConstantConvergence(convergence_ratio = 0.9^length(names))
 # pseudo_stepping = Kovachki2018InitialConvergenceRatio(initial_convergence_ratio=0.9^length(names))
 
 mark_failed_particles = ObjectiveLossThreshold(1000.0)
@@ -97,8 +101,19 @@ function get_multires_observations(cases)
     obs_1m = batched_lesbrary_observations(grids[1]; resolution="1m", kwargs...)
     obs_2m = batched_lesbrary_observations(grids[1]; resolution="2m", kwargs...)
     obs_4m = batched_lesbrary_observations(grids[1]; resolution="4m", kwargs...)
-    multi_res_observations = [obs_1m, obs_2m, obs_4m]
-    return multi_res_observations
+
+    return [obs_1m, obs_2m, obs_4m]
+end
+
+function modify(Γ)
+    ϵ = 1e-2 #* mean(abs, [Γ[n, n] for n=1:size(Γ, 1)])
+    Γ .+= ϵ * Diagonal(I, size(Γ, 1))
+
+    # Remove off-diagonal elements
+    Γ = diagm(diag(Γ)) .* 2
+    # Γ = Γ + I(size(Γ, 1))
+
+    return Γ
 end
 
 # Convenience function in terms of fixed global variables
@@ -107,10 +122,12 @@ function build_eki(cases; free_parameters = get_free_parameters(name; f=prior_fu
                                                                 suite_parameters = suite_parameters,)
 
     return build_ensemble_kalman_inversion(closure, name; cases, 
-                free_parameters, Δt, Nensemble = N_ensemble, resampler, architecture, mark_failed_particles, start_time,
+                modify, free_parameters, Δt, Nensemble = N_ensemble, resampler, architecture, mark_failed_particles, start_time,
                 grid_parameters, suite_parameters, tke_weight, Ntimes)
 end
 
+include("./emulate_sample_constrained_obs_cov_transform.jl")
+include("./full_calibration_adeline/full_calibration_utils.jl")
 
 # For case by case calibration, generate an inverse problem with all cases for plotting
 eki_all_sims = build_eki(default_cases; grid_parameters = grid_parameters[1:1], suite_parameters = suite_parameters[1:1])
@@ -125,9 +142,14 @@ visualize_vertical!(training_all_sims.batch[1], prior_mean_parameters;
             directory = main_directory, 
             filename = "realizations_training_all_sims_prior_means.png")
 
+visualize_vertical!(training_all_sims.batch[1], NamedTuple(Dict(pname => 0.5 for pname in free_parameters.names)); 
+            multi_res_observations = training_med_res_obs_various_resolutions, 
+            directory = main_directory, 
+            filename = "realizations_training_all_sims_point5.png")
+            
 function calibrate(eki; directory = main_directory,
                     forward_map_names = (:u, :v, :b, :e),
-                    iterations = 8,
+                    iterations = 4,
                     pseudo_stepping = pseudo_stepping,
                     multi_res_observations = nothing,
                     )
@@ -191,8 +213,6 @@ function calibrate(eki; directory = main_directory,
     return outputs, all_params
 end
 
-include("./emulate_sample_constrained_obs_cov_transform.jl")
-
 use_ces_for_svd = false
 k = 20
 
@@ -212,7 +232,6 @@ if by_case
 
         case_directory = joinpath(main_directory, "case_$(case)_$(case_name)");
         forward_map_names = fields_by_case[case_name];
-        # multi_res_observations = obsns_various_resolutions_med_res_by_case[case];
 
         ###
         ### Calibrate
