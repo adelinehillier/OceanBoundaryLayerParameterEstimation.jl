@@ -72,9 +72,9 @@ function visualize_vertical!(ip::InverseProblem, parameters;
         snapshots = round.(Int, range(1, length(targets), length=2)) # indices
         times = @. round((targets[snapshots]) / 86400, sigdigits=2) # days
 
-        Qᵇ = arch_array(CPU(), model.tracers.b.boundary_conditions.top.condition)[1,oi]
-        Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
-        fv = arch_array(CPU(), model.coriolis)[1,oi].f
+        # Qᵇ = arch_array(CPU(), model.tracers.b.boundary_conditions.top.condition)[1,oi]
+        # Qᵘ = arch_array(CPU(), model.velocities.u.boundary_conditions.top.condition)[1,oi]
+        # fv = arch_array(CPU(), model.coriolis)[1,oi].f
 
         # obsn_ri = length_scales(ip, observation.field_time_serieses, snapshots[end])
 
