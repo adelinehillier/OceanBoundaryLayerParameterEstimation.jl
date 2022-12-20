@@ -1,10 +1,3 @@
-import ParameterEstimocean.Parameters: transform_to_unconstrained, transform_to_constrained, covariance_transform_diagonal, unconstrained_prior
-
-unconstrained_prior(Π::LogNormal) = Normal(Π.μ, Π.σ)
-transform_to_unconstrained(Π::LogNormal, Y) = log(Y)
-transform_to_constrained(Π::LogNormal, X) = exp(X)
-covariance_transform_diagonal(::LogNormal, X) = exp(X)
-
 # Creates a singular inverse problem containing all observations in `observations`
 function inverse_problem(observations::BatchedSyntheticObservations, free_parameters; architecture = CPU(), N_ensemble = 100, output_map = ConcatenatedOutputMap(), closure = CATKEVerticalDiffusivity(), Δt=10minutes)
 

@@ -49,8 +49,15 @@ export
     open_output_file,
     int_to_subscript
 
+import ParameterEstimocean.Parameters: transform_to_unconstrained, transform_to_constrained, covariance_transform_diagonal, unconstrained_prior
+
+unconstrained_prior(Π::LogNormal) = Normal(Π.μ, Π.σ)
+transform_to_unconstrained(Π::LogNormal, Y) = log(Y)
+transform_to_constrained(Π::LogNormal, X) = exp(X)
+covariance_transform_diagonal(::LogNormal, X) = exp(X)
+
 # include("lesbrary.jl")
-# include("closure_parameters.jl")
+include("closure_parameters.jl")
 include("mcmc.jl")
 include("eki_visuals.jl")
 include("visualize_profile_predictions.jl")
