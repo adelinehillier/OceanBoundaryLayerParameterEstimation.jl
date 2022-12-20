@@ -258,13 +258,13 @@ function make_seed(eki, X, normalization_transformation)
     # seed_X_untransformed = rand(dist_θθ_untransformed, n_chains)
     # seed_X = normalize_transform(seed_X_untransformed, normalization_transformation)
     # seed_X = [seed_X[:,j] for j in 1:n_chains]
-    return seed_X
+    return seed_X, proposal
 end
 
 ##
 ## Sample from objective using parallel chains of MCMC
 ##
-function sample(seed_X, free_parameters, sampling_problem, normalization_transformation; 
+function sample(seed_X, proposal, free_parameters, sampling_problem, normalization_transformation; 
                         directory = main_directory,
                         chain_length = 1000,
                         burn_in = 15,
