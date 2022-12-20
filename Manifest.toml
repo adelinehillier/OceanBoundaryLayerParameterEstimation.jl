@@ -1076,9 +1076,9 @@ version = "4.0.2+5"
 
 [[deps.MPIPreferences]]
 deps = ["Libdl", "Preferences"]
-git-tree-sha1 = "34892fb69751a76bcf8b7add84ec77015208a1ec"
+git-tree-sha1 = "71f937129731a29eabe6969db2c90368a4408933"
 uuid = "3da0fdf6-3ccc-4f1b-acd9-58baa6c99267"
-version = "0.1.6"
+version = "0.1.7"
 
 [[deps.MPItrampoline_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "Pkg", "TOML"]
@@ -1706,7 +1706,7 @@ version = "0.9.4"
 
 [[deps.SingleColumnModelCalibration]]
 deps = ["BlockDiagonals", "CairoMakie", "DataDeps", "Distributions", "GLMakie", "JLD2", "KernelAbstractions", "LinearAlgebra", "MPICH_jll", "Oceananigans", "OffsetArrays", "ParameterEstimocean", "Printf"]
-git-tree-sha1 = "813c771fda8343c025df606bbfec3a6abac6daf1"
+git-tree-sha1 = "cbe9bbd2d3e2657be34017b6834b9522b553c51e"
 repo-rev = "ah/add-uq"
 repo-url = "https://github.com/glwagner/SingleColumnModelCalibration.jl.git"
 uuid = "3ef4119f-b09a-4363-836a-de82504835cf"
@@ -1756,9 +1756,9 @@ version = "0.1.1"
 
 [[deps.Static]]
 deps = ["IfElse"]
-git-tree-sha1 = "0559586098f3cbd2e835461254ea2fcffa4a61ba"
+git-tree-sha1 = "c35b107b61e7f34fa3f124026f2a9be97dea9e1c"
 uuid = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
-version = "0.8.2"
+version = "0.8.3"
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "Random", "StaticArraysCore", "Statistics"]
@@ -1918,9 +1918,9 @@ version = "0.7.0"
 
 [[deps.TransmuteDims]]
 deps = ["Adapt", "ChainRulesCore", "GPUArraysCore", "LinearAlgebra", "Requires", "Strided"]
-git-tree-sha1 = "59f2fefc0ea4475151d6801ce2eeb7c6f43362ed"
+git-tree-sha1 = "64df189c13692b9581924775109cb14a6b5aef8d"
 uuid = "24ddb15e-299a-5cc3-8414-dbddc482d9ca"
-version = "0.1.14"
+version = "0.1.15"
 
 [[deps.TriplotBase]]
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
