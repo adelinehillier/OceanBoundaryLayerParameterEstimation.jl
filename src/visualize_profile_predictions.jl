@@ -1,5 +1,5 @@
 using ParameterEstimocean.InverseProblems: forward_run!, transpose_model_output
-using Oceananigans.Architectures: arch_array
+using Oceananigans.Architectures: arch_array, CPU
 using CairoMakie
 using LaTeXStrings
 using Colors
@@ -306,16 +306,6 @@ function visualize!(ip::InverseProblem, parameters;
         end
     end
 
-    # for (j, observation) in enumerate(observations.observations)
-
-    #     for (i, field_name) in enumerate(field_names)
-
-    #         i += 1
-
-    #         axes[i, j] = ax
-    #     end
-    # end
-
     rowsize!(fig.layout, 1, Fixed(200))
 
     # Colors picked from a colorblind friendly palatte
@@ -332,81 +322,84 @@ function visualize!(ip::InverseProblem, parameters;
 
     # time indices to be plotted
     time_indices = record ? collect(eachindex(times)) : round.(Int, range(1, length(times), length=2))
-    display_times = @. round((times[time_indices]) / 86400, sigdigits=2)
-
 
     time_index = Observable(1)
+    display_time = @lift @. round((times[$time_index]) / 86400, sigdigits=2)
 
     # legendlabel(time) = vcat([observation_label * ", $time d"], [l * ", $time d" for l in parameter_labels])
-    legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
     # legendlabel(time) = vcat([latexstring(observation_label, "($time d)")], [latexstring(l,"($time d)") for l in parameter_labels])
+    # legendlabel(time) = vcat([observation_label * "($time d)"], [l * "($time d)" for l in parameter_labels])
 
-    on(time_index) do t
+    # on(time_index) do t
 
-        lins = []
-        labels = []
+    lins = []
+    labels = []
 
-        for (j, observation) in enumerate(observations.observations)
+    for (j, observation) in enumerate(observations.observations)
 
-            other_observation = [o.observations[j].field_time_serieses for o in multi_res_observations]
-            prediction = getindex.(predictions, j)
+        other_observation = [o.observations[j].field_time_serieses for o in multi_res_observations]
+        prediction = getindex.(predictions, j)
 
-            # Qᵇ = arch_array(CPU(), ip.simulation.model.tracers.b.boundary_conditions.top.condition)[1,i]
-            # Qᵘ = arch_array(CPU(), ip.simulation.model.velocities.u.boundary_conditions.top.condition)[1,i]
-            # fv = arch_array(CPU(), ip.simulation.model.coriolis)[1,i].f
+        # Qᵇ = arch_array(CPU(), ip.simulation.model.tracers.b.boundary_conditions.top.condition)[1,i]
+        # Qᵘ = arch_array(CPU(), ip.simulation.model.velocities.u.boundary_conditions.top.condition)[1,i]
+        # fv = arch_array(CPU(), ip.simulation.model.coriolis)[1,i].f
 
-            for (i, field_name) in enumerate(field_names)
+        for (i, field_name) in enumerate(field_names)
 
-                i += 1 # reserve the first column for row labels
+            i += 1 # reserve the first column for row labels
 
-                ax = axes[i, j]
+            ax = axes[i, j]
 
-                info = field_guide[field_name]
+            info = field_guide[field_name]
 
-                grid = observation.grid
-                z = field_name ∈ [:u, :v] ? grid.zᵃᵃᶠ[1:grid.Nz] : grid.zᵃᵃᶜ[1:grid.Nz]
+            grid = observation.grid
+            z = field_name ∈ [:u, :v] ? grid.zᵃᵃᶠ[1:grid.Nz] : grid.zᵃᵃᶜ[1:grid.Nz]
 
-                if field_name ∈ keys(first(prediction).field_time_serieses)
+            if field_name ∈ keys(first(prediction).field_time_serieses)
 
-                    obs_interior = observed_interior(observation.field_time_serieses, field_name)
-                    (scaling, xlabel) = scaling_xlabel(obs_interior, info)
+                obs_interior = observed_interior(observation.field_time_serieses, field_name)
+                (scaling, xlabel) = scaling_xlabel(obs_interior, info)
 
-                    ax.xlabel = xlabel
+                ax.xlabel = xlabel
 
-                    pred = [predicted_interior(p.field_time_serieses, field_name) for p in prediction]
+                pred = [predicted_interior(p.field_time_serieses, field_name) for p in prediction]
 
-                    # If it's an animation, fix the color; 
-                    # if it's a figure, pick the color based on the time
-                    color_index = record ? 2 : findfirst(isequal(t), time_indices)
+                # If it's an animation, fix the color; 
+                # if it's a figure, pick the color based on the time
+                color_index = @lift record ? 2 : findfirst(isequal($time_index), time_indices)
 
-                    y = obs_interior[:, t] .* scaling
+                y = @lift obs_interior[:, $time_index] .* scaling
 
-                    obs_color = (obs_colors[color_index], 0.8)
-                    obs_args = (color = obs_color, strokecolor = obs_color)
+                obs_color = (obs_colors[color_index], 0.8)
+                obs_args = (color = obs_color, strokecolor = obs_color)
 
-                    if obs_band
-                        Y = hcat([data[:, t] .* scaling for data in observed_interior.(other_observation, field_name)]...)
-                        std_y = std(Y; dims = 2)
-                        
-                        l = horizontal_band!(ax, y .- std_y, y .+ std_y, z; strokewidth = 4, obs_args...)
-                    else 
-                        l = lines!(ax, y, z; strokewidth = 10, obs_args...)
+                if obs_band
+                    std_y = @lift begin
+                        Y = hcat([data[:, $time_index] .* scaling for data in observed_interior.(other_observation, field_name)]...)
+                        std(Y; dims = 2)
                     end
+                    
+                    l = horizontal_band!(ax, y .- std_y, y .+ std_y, z; strokewidth = 4, obs_args...)
+                else 
+                    l = lines!(ax, y, z; strokewidth = 10, obs_args...)
+                end
 
-                    push!(lins, l)
-                    push!(labels, observation_label * "($time d)")
+                push!(lins, l)
+                push!(labels, observation_label * "($(display_time[]) d)")
 
-                    nlines = 1
-                    nbands = 1
-                    for (n, p) in zip(parameter_counts, pred)
+                nlines = 1
+                nbands = 1
+                for (n, p) in zip(parameter_counts, pred)
 
-                        if n == 1 # Plot prediction line 
-                            l = lines!(ax, [p[1, j, :,t] .* scaling...], z; color = (pred_colors[nlines][color_index], 1.0), linestyle=:dash, linewidth=4)
-                            push!(lins, l)
-                            nlines += 1
+                    if n == 1 # Plot prediction line 
+                        pp = @lift p[1, j, :, $time_index]
+                        l = lines!(ax, [pp .* scaling...], z; color = (pred_colors[nlines][color_index], 1.0), linestyle=:dash, linewidth=4)
+                        push!(lins, l)
+                        nlines += 1
 
-                        else # Plot uncertainty band
-                            ed = transpose(p[:, j, :, t]) .* scaling # Nz x Nensemble
+                    else # Plot uncertainty band
+                        (μ, σ) = @lift begin
+                            transpose(p[:, j, :, $time_index]) .* scaling # Nz x Nensemble
 
                             # Filter out failed particles, if any
                             nan_values = vec(mapslices(any, isnan.(ed); dims=1)) # bitvector
@@ -416,32 +409,35 @@ function visualize!(ip::InverseProblem, parameters;
                             σ = std(ed; dims=2)
                             μ = mean(ed; dims=2)
 
-                            bc = (pred_band_colors[nbands][color_index], 0.3*nbands)
-                            l = horizontal_band!(ax, μ .- σ, μ .+ σ, z; color = bc, strokewidth=2, strokecolor=bc)
-                            push!(lins, l)
-                            nbands += 1
+                            (μ, σ)
                         end
+
+                        bc = (pred_band_colors[nbands][color_index], 0.3*nbands)
+                        l = horizontal_band!(ax, μ .- σ, μ .+ σ, z; color = bc, strokewidth=2, strokecolor=bc)
+                        push!(lins, l)
+                        nbands += 1
                     end
-                    labels = vcat(labels, [l * "($time d)" for l in parameter_labels])
-
-                    middle = j > 1 && j < Nobs
-                    middle && hideydecorations!(ax)
-                    remove_spines = j == 1 ? (:t, :r) : j == Nobs ? (:t, :l) : (:t, :l, :r)
-                    hidespines!(ax, remove_spines...)
-        
-                    hideydecorations!(ax, label = false, ticklabels = false, ticks = false,)
-                    hidexdecorations!(ax, label = false, ticklabels = false, ticks = false,)
-                else
-                    
-                    empty_plot!(fig[i, j])
                 end
+                labels = vcat(labels, [l * "($(display_time[]) d" for l in parameter_labels])
 
+                middle = j > 1 && j < Nobs
+                middle && hideydecorations!(ax)
+                remove_spines = j == 1 ? (:t, :r) : j == Nobs ? (:t, :l) : (:t, :l, :r)
+                hidespines!(ax, remove_spines...)
+    
+                hideydecorations!(ax, label = false, ticklabels = false, ticks = false,)
+                hidexdecorations!(ax, label = false, ticklabels = false, ticks = false,)
+            else
+                
+                empty_plot!(fig[i, j])
             end
-        end
 
-        legend_lins[] = lins
-        legend_labels[] = labels
+        end
     end
+
+    legend_lins[] = lins
+    legend_labels[] = labels
+    # end
 
     legend_lins = Observable([])
     legend_labels = Observable(String[])
