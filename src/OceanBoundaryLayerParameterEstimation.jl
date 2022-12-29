@@ -3,6 +3,7 @@ module OceanBoundaryLayerParameterEstimation
 pushfirst!(LOAD_PATH, joinpath(@__DIR__, "..", ".."))
 
 using ParameterEstimocean
+import ParameterEstimocean.Parameters: LogNormal
 # using SingleColumnModelCalibration
 # using CalibrateEmulateSample
 
